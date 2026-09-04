@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import {
   Eye,
@@ -11,8 +12,6 @@ import {
   ArrowRight,
   Check,
 } from "lucide-react";
-
-import { useRouter } from "next/navigation";
 
 import {
   signInWithEmailAndPassword,
@@ -25,141 +24,160 @@ import { auth, googleProvider } from "@/lib/firebase";
 import AuthLayout from "@/components/auth/AuthLayout";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
- async function handleSubmit(e) {
-  e.preventDefault();
+  async function handleSubmit(e) {
+    e.preventDefault();
 
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const email = e.target.email.value.trim();
-    const password = e.target.password.value;
+      const email = e.target.email.value.trim();
+      const password = e.target.password.value;
 
-    // Firebase login
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+      // Firebase login
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
 
-    // Fresh Firebase ID token
-    const idToken = await userCredential.user.getIdToken(true);
+      // Fresh Firebase ID token
+      const idToken = await userCredential.user.getIdToken(true);
 
-    // Sync/check user in Turso
-    const response = await fetch("/api/auth/sync", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+      // Sync/check user in Turso
+      const response = await fetch("/api/auth/sync", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || "Unable to sync user.");
-    }
-
-    toast.success("Welcome back!");
-
-    router.push("/dashboard");
-  } catch (error) {
-    console.error("Login error:", error);
-
-    switch (error.code) {
-      case "auth/invalid-credential":
-      case "auth/wrong-password":
-        toast.error("Incorrect email or password.");
-        break;
-
-      case "auth/user-not-found":
-        toast.error("No account found with this email.");
-        break;
-
-      case "auth/invalid-email":
-        toast.error("Please enter a valid email address.");
-        break;
-
-      case "auth/user-disabled":
-        toast.error("This account has been disabled.");
-        break;
-
-      case "auth/too-many-requests":
-        toast.error(
-          "Too many attempts. Please try again later."
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to sync user."
         );
-        break;
+      }
 
-      case "auth/network-request-failed":
-        toast.error("Network error. Check your connection.");
-        break;
+      toast.success("Welcome back!");
 
-      default:
-        toast.error(
-          error.message || "Unable to sign in. Please try again."
-        );
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Login error:", error);
+
+      switch (error.code) {
+        case "auth/invalid-credential":
+        case "auth/wrong-password":
+          toast.error("Incorrect email or password.");
+          break;
+
+        case "auth/user-not-found":
+          toast.error("No account found with this email.");
+          break;
+
+        case "auth/invalid-email":
+          toast.error("Please enter a valid email address.");
+          break;
+
+        case "auth/user-disabled":
+          toast.error("This account has been disabled.");
+          break;
+
+        case "auth/too-many-requests":
+          toast.error(
+            "Too many attempts. Please try again later."
+          );
+          break;
+
+        case "auth/network-request-failed":
+          toast.error("Network error. Check your connection.");
+          break;
+
+        default:
+          toast.error(
+            error.message ||
+              "Unable to sign in. Please try again."
+          );
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
   }
-}
 
-async function handleGoogleLogin() {
-  try {
-    setGoogleLoading(true);
+  async function handleGoogleLogin() {
+    try {
+      setGoogleLoading(true);
 
-    const userCredential = await signInWithPopup(
-      auth,
-      googleProvider
-    );
+      const userCredential = await signInWithPopup(
+        auth,
+        googleProvider
+      );
 
-    const idToken = await userCredential.user.getIdToken(true);
+      const idToken = await userCredential.user.getIdToken(true);
 
-    const response = await fetch("/api/auth/sync", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+      const response = await fetch("/api/auth/sync", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || "Unable to sync user.");
-    }
-
-    toast.success("Welcome back!");
-
-    router.push("/dashboard");
-  } catch (error) {
-    console.error("Google login error:", error);
-
-    switch (error.code) {
-      case "auth/popup-closed-by-user":
-        toast.error("Google sign-in was cancelled.");
-        break;
-
-      case "auth/popup-blocked":
-        toast.error("Please allow popups for this website.");
-        break;
-
-      case "auth/network-request-failed":
-        toast.error("Network error. Check your connection.");
-        break;
-
-      default:
-        toast.error(
-          error.message || "Google sign-in failed."
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to sync user."
         );
+      }
+
+      toast.success("Welcome back!");
+
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Google login error:", error);
+
+      switch (error.code) {
+        case "auth/popup-closed-by-user":
+          toast.error("Google sign-in was cancelled.");
+          break;
+
+        case "auth/popup-blocked":
+          toast.error(
+            "Please allow popups for this website."
+          );
+          break;
+
+        case "auth/account-exists-with-different-credential":
+          toast.error(
+            "An account already exists with this email using another sign-in method."
+          );
+          break;
+
+        case "auth/network-request-failed":
+          toast.error(
+            "Network error. Check your connection."
+          );
+          break;
+
+        default:
+          toast.error(
+            error.message || "Google sign-in failed."
+          );
+      }
+    } finally {
+      setGoogleLoading(false);
     }
-  } finally {
-    setGoogleLoading(false);
   }
-}
 
   return (
     <AuthLayout
@@ -199,9 +217,13 @@ async function handleGoogleLogin() {
       </div>
 
       {/* Google Button */}
-      <button
+      <motion.button
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.99 }}
         type="button"
-        className="group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md active:scale-[0.99]"
+        onClick={handleGoogleLogin}
+        disabled={googleLoading || loading}
+        className="group flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
       >
         {/* Google icon */}
         <svg
@@ -228,10 +250,16 @@ async function handleGoogleLogin() {
           />
         </svg>
 
-        <span>Continue with Google</span>
+        <span>
+          {googleLoading
+            ? "Connecting..."
+            : "Continue with Google"}
+        </span>
 
-        <ArrowRight className="h-4 w-4 opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-60" />
-      </button>
+        {!googleLoading && (
+          <ArrowRight className="h-4 w-4 opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-60" />
+        )}
+      </motion.button>
 
       {/* Divider */}
       <div className="my-7 flex items-center gap-4">
@@ -260,11 +288,13 @@ async function handleGoogleLogin() {
 
             <input
               id="email"
+              name="email"
               type="email"
               placeholder="you@example.com"
               required
               autoComplete="email"
-              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-11 pr-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#ef1118] focus:bg-white focus:ring-4 focus:ring-red-500/10"
+              disabled={loading || googleLoading}
+              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-11 pr-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#ef1118] focus:bg-white focus:ring-4 focus:ring-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
             />
           </div>
         </div>
@@ -292,20 +322,27 @@ async function handleGoogleLogin() {
 
             <input
               id="password"
+              name="password"
               type={showPassword ? "text" : "password"}
               placeholder="Enter your password"
               required
               autoComplete="current-password"
-              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-11 pr-12 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#ef1118] focus:bg-white focus:ring-4 focus:ring-red-500/10"
+              disabled={loading || googleLoading}
+              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-11 pr-12 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#ef1118] focus:bg-white focus:ring-4 focus:ring-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
             />
 
             <button
               type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={
-                showPassword ? "Hide password" : "Show password"
+              onClick={() =>
+                setShowPassword((value) => !value)
               }
-              className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              disabled={loading || googleLoading}
+              aria-label={
+                showPassword
+                  ? "Hide password"
+                  : "Show password"
+              }
+              className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
             >
               {showPassword ? (
                 <EyeOff className="h-[18px] w-[18px]" />
@@ -320,24 +357,31 @@ async function handleGoogleLogin() {
         <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-600">
           <button
             type="button"
-            onClick={() => setRememberMe(!rememberMe)}
+            onClick={() =>
+              setRememberMe((value) => !value)
+            }
+            disabled={loading || googleLoading}
             aria-label="Remember me"
-            className={`flex h-5 w-5 items-center justify-center rounded-md border transition-all ${
+            className={`flex h-5 w-5 items-center justify-center rounded-md border transition-all disabled:cursor-not-allowed ${
               rememberMe
                 ? "border-[#ef1118] bg-[#ef1118] text-white"
                 : "border-slate-300 bg-white"
             }`}
           >
-            {rememberMe && <Check className="h-3.5 w-3.5" />}
+            {rememberMe && (
+              <Check className="h-3.5 w-3.5" />
+            )}
           </button>
 
-          Remember me
+          <span>Remember me</span>
         </label>
 
         {/* Submit */}
-        <button
+        <motion.button
+          whileHover={{ y: -1 }}
+          whileTap={{ scale: 0.99 }}
           type="submit"
-          disabled={loading}
+          disabled={loading || googleLoading}
           className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ef1118] px-4 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition-all duration-200 hover:bg-[#d90f15] hover:shadow-red-500/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {loading ? (
@@ -351,7 +395,7 @@ async function handleGoogleLogin() {
               <ArrowRight className="h-4 w-4" />
             </>
           )}
-        </button>
+        </motion.button>
       </form>
 
       {/* Register link */}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { adminAuth } from "@/lib/firebaseAdmin";
 import { db } from "@/lib/turso";
 
@@ -13,9 +14,19 @@ export async function POST(request) {
       );
     }
 
-    const idToken = authorization.split("Bearer ")[1];
+    const idToken = authorization.slice(7);
 
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "Missing ID token" },
+        { status: 401 }
+      );
+    }
+
+    // Verify Firebase ID token
+    const decodedToken = await adminAuth.verifyIdToken(
+      idToken
+    );
 
     const firebaseUid = decodedToken.uid;
     const email = decodedToken.email ?? null;
@@ -25,6 +36,7 @@ export async function POST(request) {
     const provider =
       decodedToken.firebase?.sign_in_provider ?? null;
 
+    // Check existing user
     const existingUser = await db.execute({
       sql: `
         SELECT id
@@ -36,6 +48,7 @@ export async function POST(request) {
     });
 
     if (existingUser.rows.length === 0) {
+      // Create user
       await db.execute({
         sql: `
           INSERT INTO users (
@@ -56,6 +69,7 @@ export async function POST(request) {
         ],
       });
     } else {
+      // Update existing user
       await db.execute({
         sql: `
           UPDATE users
@@ -90,8 +104,20 @@ export async function POST(request) {
   } catch (error) {
     console.error("User sync error:", error);
 
+    // Invalid/expired Firebase token
+    if (
+      error?.code === "auth/argument-error" ||
+      error?.code === "auth/id-token-expired" ||
+      error?.code === "auth/id-token-revoked"
+    ) {
+      return NextResponse.json(
+        { error: "Invalid or expired authentication token." },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Unable to sync user" },
+      { error: "Unable to sync user." },
       { status: 500 }
     );
   }
