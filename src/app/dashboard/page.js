@@ -28,44 +28,6 @@ import { toast } from "sonner";
 
 import { auth } from "@/lib/firebase";
 
-const SERIES = [
-  {
-    id: "free",
-    name: "Free Test",
-    shortName: "Free Test",
-    description: "Start practicing with completely free tests.",
-    paid: false,
-  },
-  {
-    id: "aspire",
-    name: "Aspire Test",
-    shortName: "Aspire Test",
-    description: "Structured practice for serious preparation.",
-    paid: true,
-  },
-  {
-    id: "impetus",
-    name: "Impetus Test",
-    shortName: "Impetus Test",
-    description: "Push your preparation to the next level.",
-    paid: true,
-  },
-  {
-    id: "pdoblue",
-    name: "PDoblue Test",
-    shortName: "PDoblue Test",
-    description: "Advanced practice for exam-level preparation.",
-    paid: true,
-  },
-  {
-    id: "spiderman",
-    name: "SpiderMan Test",
-    shortName: "SpiderMan Test",
-    description: "Premium tests built for serious aspirants.",
-    paid: true,
-  },
-];
-
 const CATEGORIES = [
   {
     id: "dpp",
@@ -99,93 +61,6 @@ const LIVE_CATEGORIES = [
     id: "mock-live",
     name: "Mock Live",
     description: "Full live mock tests",
-  },
-];
-
-const TESTS = [
-  {
-    id: "free-dpp-01",
-    series: "free",
-    category: "dpp",
-    title: "Set, Relation & Functions : DPP 01",
-    subtitle: "MCQ Quiz",
-    subjects: ["Mathematics"],
-    questions: 15,
-    marks: 180,
-    time: 30,
-    status: "free",
-  },
-  {
-    id: "free-dpp-02",
-    series: "free",
-    category: "dpp",
-    title: "Logic & Reasoning : DPP 02",
-    subtitle: "MCQ Quiz",
-    subjects: ["Reasoning"],
-    questions: 15,
-    marks: 180,
-    time: 30,
-    status: "free",
-  },
-  {
-    id: "free-dpp-03",
-    series: "free",
-    category: "dpp",
-    title: "Computer Fundamentals : DPP 03",
-    subtitle: "MCQ Quiz",
-    subjects: ["CS"],
-    questions: 20,
-    marks: 240,
-    time: 35,
-    status: "free",
-  },
-  {
-    id: "free-dpp-04",
-    series: "free",
-    category: "dpp",
-    title: "English Basics : DPP 04",
-    subtitle: "MCQ Quiz",
-    subjects: ["English"],
-    questions: 15,
-    marks: 180,
-    time: 25,
-    status: "free",
-  },
-  {
-    id: "aspire-mini-01",
-    series: "aspire",
-    category: "mini",
-    title: "NIMCET Mixed Practice 01",
-    subtitle: "Mini Test",
-    subjects: ["Mathematics", "Reasoning"],
-    questions: 30,
-    marks: 360,
-    time: 45,
-    status: "paid",
-  },
-  {
-    id: "impetus-mock-01",
-    series: "impetus",
-    category: "mock",
-    title: "NIMCET Full Mock 01",
-    subtitle: "Mock Test",
-    subjects: ["Mathematics", "Reasoning", "CS", "English"],
-    questions: 120,
-    marks: 1000,
-    time: 120,
-    status: "paid",
-  },
-  {
-    id: "spiderman-mock-01",
-    series: "spiderman",
-    category: "mock",
-    title: "SpiderMan Mega Mock 01",
-    subtitle: "Full Length Test",
-    subjects: ["Mathematics", "Reasoning", "CS", "English"],
-    questions: 120,
-    marks: 1000,
-    time: 120,
-    status: "paid",
   },
 ];
 
@@ -245,9 +120,14 @@ export default function DashboardPage() {
 
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const [series, setSeries] = useState([]);
+  const [tests, setTests] = useState([]);
 
   const [activeSeries, setActiveSeries] = useState("free");
   const [activeCategory, setActiveCategory] = useState("dpp");
@@ -255,57 +135,94 @@ export default function DashboardPage() {
 
   const [accessModal, setAccessModal] = useState(null);
 
+  const loadDashboardData = async (currentUser) => {
+    try {
+      setDataLoading(true);
+      setDataError("");
+
+      const idToken = await currentUser.getIdToken();
+
+      const response = await fetch("/api/dashboard/tests", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load dashboard.");
+      }
+
+      setSeries(data.series || []);
+      setTests(data.tests || []);
+
+      if (data.series?.length > 0) {
+        const freeSeries = data.series.find((item) => item.slug === "free");
+        setActiveSeries(freeSeries?.slug || data.series[0].slug);
+      }
+    } catch (error) {
+      console.error("Dashboard loading error:", error);
+      setDataError(error.message || "Unable to load dashboard.");
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
+        setAuthLoading(false);
         router.replace("/auth/login");
         return;
       }
 
       setUser(currentUser);
       setAuthLoading(false);
+      await loadDashboardData(currentUser);
     });
 
     return () => unsubscribe();
   }, [router]);
 
-  const hasAccess = useMemo(() => {
-    return {
-      free: true,
-      aspire: false,
-      impetus: false,
-      pdoblue: false,
-      spiderman: false,
-    };
-  }, []);
-
-  const currentSeries = SERIES.find(
-    (series) => series.id === activeSeries
+  const currentSeries = series.find(
+    (item) => item.slug === activeSeries
   );
 
   const displayedTests = useMemo(() => {
-    return TESTS.filter(
-      (test) =>
-        test.series === activeSeries &&
-        test.category === activeCategory
-    );
-  }, [activeSeries, activeCategory]);
+    return tests.filter((test) => {
+      if (test.series !== activeSeries) {
+        return false;
+      }
 
-  const handleSeriesClick = (series) => {
-    const access = hasAccess[series.id];
+      if (activeCategory === "live") {
+        return test.parentCategory === "live";
+      }
 
-    if (!access) {
-      setAccessModal(series);
+      return test.category === activeCategory;
+    });
+  }, [tests, activeSeries, activeCategory]);
+
+  const handleSeriesClick = (selectedSeries) => {
+    if (!selectedSeries.accessible) {
+      setAccessModal(selectedSeries);
       return;
     }
 
-    setActiveSeries(series.id);
+    setActiveSeries(selectedSeries.slug);
     setActiveCategory("dpp");
     setActiveLiveCategory("mini-live");
     setMobileMenuOpen(false);
   };
 
   const handleStartTest = (test) => {
+    if (test.attemptsUsed >= 3) {
+      toast.error("All 3 attempts have been used for this test.");
+      return;
+    }
+
     router.push(`/test/${test.id}/attempt`);
   };
 
@@ -320,7 +237,7 @@ export default function DashboardPage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || dataLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f8fb]">
         <div className="flex flex-col items-center gap-4">
@@ -348,6 +265,29 @@ export default function DashboardPage() {
     user?.displayName?.split(" ")[0] ||
     user?.email?.split("@")[0] ||
     "Student";
+
+  if (dataError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f8fb] px-4">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 text-center shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 font-black text-[#ef1118]">
+            !
+          </div>
+          <h2 className="mt-4 text-xl font-black text-slate-900">
+            Unable to load dashboard
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{dataError}</p>
+          <button
+            type="button"
+            onClick={() => user && loadDashboardData(user)}
+            className="mt-5 rounded-xl bg-[#ef1118] px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700"
+          >
+            Try again
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#f7f8fb] text-slate-900">
@@ -574,16 +514,15 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {SERIES.map((series) => {
-              const active = activeSeries === series.id;
-              const accessible = hasAccess[series.id];
+            {series.map((item) => {
+              const active = activeSeries === item.slug;
 
               return (
                 <motion.button
-                  key={series.id}
+                  key={item.id}
                   whileTap={{ scale: 0.98 }}
                   type="button"
-                  onClick={() => handleSeriesClick(series)}
+                  onClick={() => handleSeriesClick(item)}
                   className={`shrink-0 rounded-full border px-5 py-2.5 text-sm font-bold transition ${
                     active
                       ? "border-[#ef1118] bg-[#ef1118] text-white shadow-lg shadow-red-100"
@@ -591,9 +530,9 @@ export default function DashboardPage() {
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    {series.shortName}
+                    {item.name}
 
-                    {!accessible && (
+                    {!item.accessible && (
                       <span
                         className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${
                           active
@@ -620,11 +559,11 @@ export default function DashboardPage() {
         >
           <div className="mb-5">
             <h2 className="text-2xl font-black tracking-tight text-slate-950">
-              {currentSeries.name}
+              {currentSeries?.name || "Test Series"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              {currentSeries.description}
+              {currentSeries?.description || "Choose a test and start practicing."}
             </p>
           </div>
 
@@ -735,15 +674,15 @@ export default function DashboardPage() {
                         <BarChart3 className="h-5 w-5" />
                       </div>
 
-                      <span
+                      <div
                         className={`rounded-lg px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
-                          test.status === "free"
-                            ? "bg-emerald-50 text-emerald-600"
-                            : "bg-slate-100 text-slate-500"
+                          test.attemptsUsed >= 3
+                            ? "bg-slate-100 text-slate-500"
+                            : "bg-emerald-50 text-emerald-600"
                         }`}
                       >
-                        {test.status === "free" ? "Free" : "Paid"}
-                      </span>
+                        Attempts {test.attemptsUsed}/3
+                      </div>
                     </div>
 
                     <div className="mt-5">
@@ -809,10 +748,11 @@ export default function DashboardPage() {
                       whileTap={{ scale: 0.98 }}
                       type="button"
                       onClick={() => handleStartTest(test)}
-                      className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#16a34a] text-sm font-extrabold text-white shadow-md shadow-green-100 transition hover:bg-green-700"
+                      disabled={test.attemptsUsed >= 3}
+                      className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#16a34a] text-sm font-extrabold text-white shadow-md shadow-green-100 transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
                     >
                       <Play className="h-4 w-4 fill-current" />
-                      Start Test
+                      {test.attemptsUsed >= 3 ? "Attempts Exhausted" : test.hasInProgress ? "Resume Test" : "Start Test"}
                     </motion.button>
                   </div>
                 </motion.article>
