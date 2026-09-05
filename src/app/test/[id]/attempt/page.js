@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import SpiderManLoader from "@/components/common/SpiderManLoader";
 import {
   Check,
   ChevronLeft,
@@ -23,143 +24,9 @@ const STATUS = {
 
 /*
 |--------------------------------------------------------------------------
-| Temporary demo questions
+| Question State
 |--------------------------------------------------------------------------
-| Real questions API baad mein connect hoga.
 */
-
-const demoQuestions = [
-  {
-    id: 1,
-    questionText:
-      "At 3.00, the hour and minute hands of a clock form an angle of:",
-    options: [
-      "90 degree",
-      "120 degree",
-      "180 degree",
-      "60 degree",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 2,
-    questionText:
-      "Throughout how many degrees will the hour hand rotate when the clock shows 2 O' clock in the afternoon?",
-    options: [
-      "150°",
-      "144°",
-      "168°",
-      "180°",
-    ],
-    positiveMarks: 6,
-    negativeMarks: 1.5,
-  },
-  {
-    id: 3,
-    questionText:
-      "If the angle between the hands of a clock is 90°, which of the following may be true?",
-    options: [
-      "3:00",
-      "6:00",
-      "9:00",
-      "12:00",
-    ],
-    positiveMarks: 6,
-    negativeMarks: 1.5,
-  },
-  {
-    id: 4,
-    questionText:
-      "A clock gains 5 minutes every hour. How much time will it gain in 12 hours?",
-    options: [
-      "50 minutes",
-      "60 minutes",
-      "70 minutes",
-      "75 minutes",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 5,
-    questionText:
-      "Which of the following statements is correct regarding the minute hand of a clock?",
-    options: [
-      "It moves 5° per minute",
-      "It moves 6° per minute",
-      "It moves 10° per minute",
-      "It moves 12° per minute",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 6,
-    questionText:
-      "The angle through which the hour hand rotates in one hour is:",
-    options: [
-      "15°",
-      "20°",
-      "30°",
-      "60°",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 7,
-    questionText:
-      "If a clock shows 8:20, the angle between the hands is approximately:",
-    options: [
-      "120°",
-      "130°",
-      "140°",
-      "150°",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 8,
-    questionText:
-      "How many times in a day do the hands of a clock overlap?",
-    options: [
-      "11",
-      "12",
-      "22",
-      "24",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 9,
-    questionText:
-      "A clock is 10 minutes slow. If it gains 2 minutes every hour, after how many hours will it show correct time?",
-    options: [
-      "4 hours",
-      "5 hours",
-      "6 hours",
-      "8 hours",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-  {
-    id: 10,
-    questionText:
-      "The hands of a clock are opposite to each other how many times in 12 hours?",
-    options: [
-      "10",
-      "11",
-      "12",
-      "13",
-    ],
-    positiveMarks: 12,
-    negativeMarks: 3,
-  },
-];
 
 function createQuestionState(total) {
   const state = {};
@@ -199,6 +66,12 @@ function getStatus(item) {
   return STATUS.NOT_ANSWERED;
 }
 
+/*
+|--------------------------------------------------------------------------
+| Time
+|--------------------------------------------------------------------------
+*/
+
 function formatTime(seconds) {
   const total = Math.max(
     0,
@@ -206,9 +79,11 @@ function formatTime(seconds) {
   );
 
   const hours = Math.floor(total / 3600);
+
   const minutes = Math.floor(
     (total % 3600) / 60
   );
+
   const secs = total % 60;
 
   return [hours, minutes, secs]
@@ -216,18 +91,6 @@ function formatTime(seconds) {
       String(value).padStart(2, "0")
     )
     .join(":");
-}
-
-function getDemoQuestion(number) {
-  const source =
-    demoQuestions[
-      (number - 1) % demoQuestions.length
-    ];
-
-  return {
-    ...source,
-    id: number,
-  };
 }
 
 /*
@@ -247,7 +110,7 @@ function PaletteIcon({
   if (status === STATUS.NOT_VISITED) {
     return (
       <div
-        className={`${base} h-[42px] w-[42px] rounded-[4px] border border-[#94a3b8] bg-gradient-to-b from-white to-[#e1e1e1] text-[#1e293b] shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_1px_2px_rgba(0,0,0,0.1)] ${
+        className={`${base} h-10.5 w-10.5 rounded-sm border border-[#94a3b8] bg-gradient-to-b from-white to-[#e1e1e1] text-[#1e293b] shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_1px_2px_rgba(0,0,0,0.1)] ${
           current
             ? "z-10 scale-[1.05] shadow-[0_0_0_2px_white,0_0_0_4px_#2563eb]"
             : ""
@@ -261,7 +124,7 @@ function PaletteIcon({
   if (status === STATUS.NOT_ANSWERED) {
     return (
       <div
-        className={`${base} h-[42px] w-[42px] rounded-[2px] bg-gradient-to-b from-[#e25822] to-[#b42711] text-white [clip-path:polygon(0%_0%,100%_0%,100%_75%,50%_100%,0%_75%)] ${
+        className={`${base} h-10.5 w-10.5 rounded-xs bg-linear-to-b from-[#e25822] to-[#b42711] text-white [clip-path:polygon(0%_0%,100%_0%,100%_75%,50%_100%,0%_75%)] ${
           current
             ? "z-10 scale-[1.05] shadow-[0_0_0_2px_white,0_0_0_4px_#2563eb]"
             : ""
@@ -275,7 +138,7 @@ function PaletteIcon({
   if (status === STATUS.ANSWERED) {
     return (
       <div
-        className={`${base} h-[42px] w-[42px] rounded-[2px] bg-gradient-to-b from-[#7fc142] to-[#478e17] text-white [clip-path:polygon(50%_0%,100%_25%,100%_100%,0%_100%,0%_25%)] ${
+        className={`${base} h-10.5 w-10.5 rounded-xs bg-linear-to-b from-[#7fc142] to-[#478e17] text-white [clip-path:polygon(50%_0%,100%_25%,100%_100%,0%_100%,0%_25%)] ${
           current
             ? "z-10 scale-[1.05] shadow-[0_0_0_2px_white,0_0_0_4px_#2563eb]"
             : ""
@@ -289,7 +152,7 @@ function PaletteIcon({
   if (status === STATUS.REVIEW) {
     return (
       <div
-        className={`${base} h-[42px] w-[42px] rounded-full bg-gradient-to-b from-[#8a5bbb] to-[#5a3782] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_1px_2px_rgba(0,0,0,0.2)] ${
+        className={`${base} h-10.5 w-10.5 rounded-full bg-linear-to-b from-[#8a5bbb] to-[#5a3782] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_1px_2px_rgba(0,0,0,0.2)] ${
           current
             ? "z-10 scale-[1.05] shadow-[0_0_0_2px_white,0_0_0_4px_#2563eb]"
             : ""
@@ -302,7 +165,7 @@ function PaletteIcon({
 
   return (
     <div
-      className={`${base} h-[42px] w-[42px] rounded-full bg-gradient-to-b from-[#8a5bbb] to-[#5a3782] text-white ${
+      className={`${base} h-10.5 w-10.5 rounded-full bg-linear-to-b from-[#8a5bbb] to-[#5a3782] text-white ${
         current
           ? "z-10 scale-[1.05] shadow-[0_0_0_2px_white,0_0_0_4px_#2563eb]"
           : ""
@@ -310,7 +173,7 @@ function PaletteIcon({
     >
       {number}
 
-      <span className="absolute -bottom-[2px] -right-[2px] flex h-[14px] w-[14px] items-center justify-center rounded-full border border-white bg-[#5ca817] text-[8px] font-extrabold leading-none text-white">
+      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-[#5ca817] text-[8px] font-extrabold leading-none text-white">
         ✓
       </span>
     </div>
@@ -328,7 +191,7 @@ function LegendIcon({ type, count }) {
 
   if (type === STATUS.ANSWERED) {
     return (
-      <div className="flex h-[30px] w-[34px] items-center justify-center rounded-[2px] bg-gradient-to-b from-[#7fc142] to-[#478e17] text-[11px] font-bold text-white [clip-path:polygon(50%_0%,100%_25%,100%_100%,0%_100%,0%_25%)]">
+      <div className="flex h-7.5 w-8.5 items-center justify-center rounded-xs bg-linear-to-b from-[#7fc142] to-[#478e17] text-[11px] font-bold text-white [clip-path:polygon(50%_0%,100%_25%,100%_100%,0%_100%,0%_25%)]">
         {displayCount}
       </div>
     );
@@ -336,7 +199,7 @@ function LegendIcon({ type, count }) {
 
   if (type === STATUS.NOT_ANSWERED) {
     return (
-      <div className="flex h-[30px] w-[34px] items-center justify-center rounded-[2px] bg-gradient-to-b from-[#e25822] to-[#b42711] text-[11px] font-bold text-white [clip-path:polygon(0%_0%,100%_0%,100%_75%,50%_100%,0%_75%)]">
+      <div className="flex h-7.5 w-8.5 items-center justify-center rounded-xs bg-linear-to-b from-[#e25822] to-[#b42711] text-[11px] font-bold text-white [clip-path:polygon(0%_0%,100%_0%,100%_75%,50%_100%,0%_75%)]">
         {displayCount}
       </div>
     );
@@ -344,7 +207,7 @@ function LegendIcon({ type, count }) {
 
   if (type === STATUS.NOT_VISITED) {
     return (
-      <div className="flex h-[28px] w-[32px] items-center justify-center rounded-[4px] border border-[#94a3b8] bg-gradient-to-b from-white to-[#e1e1e1] text-[11px] font-bold text-[#1e293b]">
+      <div className="flex h-7 w-8 items-center justify-center rounded-sm border border-[#94a3b8] bg-linear-to-b from-white to-[#e1e1e1] text-[11px] font-bold text-[#1e293b]">
         {displayCount}
       </div>
     );
@@ -352,17 +215,17 @@ function LegendIcon({ type, count }) {
 
   if (type === STATUS.REVIEW) {
     return (
-      <div className="flex h-[32px] w-[32px] items-center justify-center rounded-full bg-gradient-to-b from-[#8a5bbb] to-[#5a3782] text-[11px] font-bold text-white">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-b from-[#8a5bbb] to-[#5a3782] text-[11px] font-bold text-white">
         {displayCount}
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-[32px] w-[32px] items-center justify-center rounded-full bg-gradient-to-b from-[#8a5bbb] to-[#5a3782] text-[11px] font-bold text-white">
+    <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-b from-[#8a5bbb] to-[#5a3782] text-[11px] font-bold text-white">
       {displayCount}
 
-      <span className="absolute -bottom-[2px] -right-[2px] flex h-[12px] w-[12px] items-center justify-center rounded-full border border-white bg-[#5ca817] text-[7px] font-extrabold text-white">
+      <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full border border-white bg-[#5ca817] text-[7px] font-extrabold text-white">
         ✓
       </span>
     </div>
@@ -372,8 +235,17 @@ function LegendIcon({ type, count }) {
 export default function AttemptPage() {
   const { id } = useParams();
 
+  /*
+  |--------------------------------------------------------------------------
+  | Main State
+  |--------------------------------------------------------------------------
+  */
+
   const [loading, setLoading] = useState(true);
+
   const [test, setTest] = useState(null);
+
+  const [questions, setQuestions] = useState([]);
 
   const [currentQuestion, setCurrentQuestion] =
     useState(1);
@@ -407,11 +279,14 @@ export default function AttemptPage() {
   const [mobilePalette, setMobilePalette] =
     useState(false);
 
+  const [loadError, setLoadError] =
+    useState("");
+
   const questionBodyRef = useRef(null);
 
   /*
   |--------------------------------------------------------------------------
-  | Load test
+  | Load Instructions + Real Questions
   |--------------------------------------------------------------------------
   */
 
@@ -423,56 +298,122 @@ export default function AttemptPage() {
     const loadTest = async () => {
       try {
         setLoading(true);
+        setLoadError("");
 
-        const response = await fetch(
-          `/api/test/${id}/instructions`,
-          {
+        const [
+          instructionsResponse,
+          questionsResponse,
+        ] = await Promise.all([
+          fetch(`/api/test/${id}/instructions`, {
             cache: "no-store",
-          }
-        );
+          }),
 
-        const data = await response.json();
+          fetch(`/api/test/${id}/questions`, {
+            cache: "no-store",
+          }),
+        ]);
 
-        if (!response.ok) {
+        const instructionsData =
+          await instructionsResponse.json();
+
+        const questionsData =
+          await questionsResponse.json();
+
+        if (!instructionsResponse.ok) {
           throw new Error(
-            data.error ||
+            instructionsData.error ||
               "Unable to load test."
           );
         }
 
-        if (cancelled) return;
+        if (!questionsResponse.ok) {
+          throw new Error(
+            questionsData.error ||
+              "Unable to load test questions."
+          );
+        }
 
-        setTest(data.test);
+        if (cancelled) {
+          return;
+        }
 
-        const totalQuestions = Math.max(
-          Number(
-            data.test?.total_questions || 0
-          ),
-          1
-        );
+        const loadedQuestions =
+          Array.isArray(
+            questionsData.questions
+          )
+            ? questionsData.questions
+            : [];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Test
+        |--------------------------------------------------------------------------
+        */
+
+        setTest(instructionsData.test);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Questions
+        |--------------------------------------------------------------------------
+        */
+
+        setQuestions(loadedQuestions);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Initial Question State
+        |--------------------------------------------------------------------------
+        */
 
         setQuestionsState(
-          createQuestionState(totalQuestions)
+          createQuestionState(
+            loadedQuestions.length
+          )
         );
 
+        /*
+        |--------------------------------------------------------------------------
+        | Initial Timer
+        |--------------------------------------------------------------------------
+        */
+
         const isDpp = Boolean(
-          data.test?.is_dpp
+          instructionsData.test?.is_dpp
         );
 
         if (!isDpp) {
           const duration = Number(
-            data.test?.duration_minutes || 0
+            instructionsData.test
+              ?.duration_minutes || 0
           );
 
           setRemainingSeconds(
             Math.max(duration * 60, 0)
           );
+        } else {
+          setRemainingSeconds(0);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Reset Current Question
+        |--------------------------------------------------------------------------
+        */
+
+        setCurrentQuestion(1);
       } catch (error) {
         console.error(
           "Attempt page error:",
           error
         );
+
+        if (!cancelled) {
+          setLoadError(
+            error?.message ||
+              "Unable to load test."
+          );
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -489,14 +430,11 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Derived
+  | Derived Values
   |--------------------------------------------------------------------------
   */
 
-  const totalQuestions = Math.max(
-    Number(test?.total_questions || 0),
-    1
-  );
+  const totalQuestions = questions.length;
 
   const isDpp = Boolean(test?.is_dpp);
 
@@ -505,7 +443,7 @@ export default function AttemptPage() {
     Number(test?.duration_minutes || 0) > 0;
 
   const currentQuestionData =
-    getDemoQuestion(currentQuestion);
+    questions[currentQuestion - 1] || null;
 
   const currentState =
     questionsState[currentQuestion] || {
@@ -516,6 +454,7 @@ export default function AttemptPage() {
     };
 
   const subjectName =
+    currentQuestionData?.subjectName ||
     test?.sections?.[0]?.name ||
     "Mathematics";
 
@@ -526,7 +465,13 @@ export default function AttemptPage() {
   */
 
   useEffect(() => {
-    if (loading || submitted) return;
+    if (
+      loading ||
+      submitted ||
+      totalQuestions === 0
+    ) {
+      return;
+    }
 
     const timer = window.setInterval(() => {
       if (isFixedTimer) {
@@ -534,6 +479,7 @@ export default function AttemptPage() {
           if (previous <= 1) {
             window.clearInterval(timer);
 
+            setRemainingSeconds(0);
             setAutoSubmit(true);
             setShowSubmitModal(true);
 
@@ -556,18 +502,25 @@ export default function AttemptPage() {
     };
   }, [
     loading,
-    isFixedTimer,
     submitted,
+    totalQuestions,
+    isFixedTimer,
   ]);
 
   /*
   |--------------------------------------------------------------------------
-  | Per-question timer
+  | Per Question Timer
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (loading || submitted) return;
+    if (
+      loading ||
+      submitted ||
+      totalQuestions === 0
+    ) {
+      return;
+    }
 
     const timer = window.setInterval(() => {
       setQuestionsState((previous) => {
@@ -583,6 +536,7 @@ export default function AttemptPage() {
 
           [currentQuestion]: {
             ...item,
+
             timeSpentSeconds:
               item.timeSpentSeconds + 1,
           },
@@ -595,13 +549,14 @@ export default function AttemptPage() {
     };
   }, [
     loading,
-    currentQuestion,
     submitted,
+    currentQuestion,
+    totalQuestions,
   ]);
 
   /*
   |--------------------------------------------------------------------------
-  | Scroll question to top
+  | Scroll to Top on Question Change
   |--------------------------------------------------------------------------
   */
 
@@ -613,7 +568,7 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Fullscreen monitoring
+  | Fullscreen Monitoring
   |--------------------------------------------------------------------------
   */
 
@@ -627,9 +582,21 @@ export default function AttemptPage() {
         setFullscreenWarnings((previous) => {
           const next = previous + 1;
 
+          /*
+          |--------------------------------------------------------------------------
+          | Warning 1 / 2 / 3
+          |--------------------------------------------------------------------------
+          */
+
           if (next <= 3) {
             setShowFullscreenWarning(true);
           }
+
+          /*
+          |--------------------------------------------------------------------------
+          | Third Exit -> Submit Modal
+          |--------------------------------------------------------------------------
+          */
 
           if (next >= 3) {
             setAutoSubmit(true);
@@ -653,6 +620,12 @@ export default function AttemptPage() {
       );
     };
   }, [loading, submitted]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Enter Fullscreen
+  |--------------------------------------------------------------------------
+  */
 
   const enterFullscreen = async () => {
     try {
@@ -696,7 +669,9 @@ export default function AttemptPage() {
   };
 
   const nextQuestion = () => {
-    if (currentQuestion >= totalQuestions) {
+    if (
+      currentQuestion >= totalQuestions
+    ) {
       return;
     }
 
@@ -717,7 +692,7 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Option selection
+  | Option Selection
   |--------------------------------------------------------------------------
   */
 
@@ -737,6 +712,12 @@ export default function AttemptPage() {
 
           visited: true,
 
+          /*
+          |--------------------------------------------------------------------------
+          | Clicking selected option again clears it
+          |--------------------------------------------------------------------------
+          */
+
           selectedOption: sameOption
             ? null
             : index,
@@ -747,7 +728,7 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Review
+  | Mark for Review
   |--------------------------------------------------------------------------
   */
 
@@ -778,17 +759,61 @@ export default function AttemptPage() {
   */
 
   const submitTest = () => {
-    setSubmitted(true);
+  try {
+    const resultData = {
+      testId: String(id),
+      testTitle: test?.title || "Test",
+
+      totalQuestions,
+      answered: answeredCount,
+      notAnswered: notAnsweredCount,
+      notVisited: notVisitedCount,
+
+      markedForReview: markedCount,
+      answeredAndMarked:
+        answeredReviewCount,
+
+      elapsedSeconds: isFixedTimer
+        ? Math.max(
+            Number(test?.duration_minutes || 0) *
+              60 -
+              Number(remainingSeconds || 0),
+            0
+          )
+        : elapsedSeconds,
+
+      submittedAt: new Date().toISOString(),
+    };
+
+    sessionStorage.setItem(
+      `spiderman_test_result_${id}`,
+      JSON.stringify(resultData)
+    );
+
+    sessionStorage.setItem(
+      `spiderman_test_state_${id}`,
+      JSON.stringify(questionsState)
+    );
+
     setShowSubmitModal(false);
 
     /*
-     * Final submit API later connect hoga.
+     * Result page par redirect.
      */
-  };
+    window.location.href =
+      `/test/${id}/result`;
+  } catch (error) {
+    console.error(
+      "Submit navigation error:",
+      error
+    );
 
+    setShowSubmitModal(false);
+  }
+};
   /*
   |--------------------------------------------------------------------------
-  | Palette statistics
+  | Palette Statistics
   |--------------------------------------------------------------------------
   */
 
@@ -803,17 +828,18 @@ export default function AttemptPage() {
     [questionsState]
   );
 
-  const answeredReviewCount = useMemo(
-    () =>
-      Object.values(
-        questionsState
-      ).filter(
-        (item) =>
-          item.markedForReview &&
-          item.selectedOption !== null
-      ).length,
-    [questionsState]
-  );
+  const answeredReviewCount =
+    useMemo(
+      () =>
+        Object.values(
+          questionsState
+        ).filter(
+          (item) =>
+            item.markedForReview &&
+            item.selectedOption !== null
+        ).length,
+      [questionsState]
+    );
 
   const markedCount = useMemo(
     () =>
@@ -830,11 +856,12 @@ export default function AttemptPage() {
     0
   );
 
-  const visitedCount = Object.values(
-    questionsState
-  ).filter(
-    (item) => item.visited
-  ).length;
+  const visitedCount =
+    Object.values(
+      questionsState
+    ).filter(
+      (item) => item.visited
+    ).length;
 
   const notVisitedCount = Math.max(
     totalQuestions - visitedCount,
@@ -853,37 +880,41 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Loading
+  | Loading Screen
   |--------------------------------------------------------------------------
   */
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-white font-sans text-xl font-bold text-slate-500">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          Loading Test Engine...
-        </div>
-      </div>
-    );
-  }
+ if (loading) {
+  return (
+    <SpiderManLoader text="Loading Test..." />
+  );
+}
 
   /*
   |--------------------------------------------------------------------------
-  | Error
+  | Error Screen
   |--------------------------------------------------------------------------
   */
 
-  if (!test) {
+  if (
+    loadError ||
+    !test ||
+    totalQuestions === 0
+  ) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-50 px-5">
-        <div className="rounded-xl border border-slate-200 bg-white px-8 py-7 text-center shadow-sm">
-          <div className="text-lg font-bold text-slate-900">
+        <div className="w-full max-w-[500px] rounded-xl border border-slate-200 bg-white px-8 py-7 text-center shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-500">
+            <AlertTriangle className="h-7 w-7" />
+          </div>
+
+          <div className="mt-5 text-lg font-bold text-slate-900">
             Unable to load test
           </div>
 
-          <div className="mt-2 text-sm text-slate-500">
-            Please go back and try again.
+          <div className="mt-2 text-sm leading-6 text-slate-500">
+            {loadError ||
+              "No questions were found for this test."}
           </div>
         </div>
       </div>
@@ -892,7 +923,7 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Submitted
+  | Submitted Screen
   |--------------------------------------------------------------------------
   */
 
@@ -950,7 +981,7 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Main Player
+  | MAIN TEST PLAYER
   |--------------------------------------------------------------------------
   */
 
@@ -1026,7 +1057,7 @@ export default function AttemptPage() {
             </div>
 
             <div className="rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-bold text-green-600">
-              +{currentQuestionData.positiveMarks}
+              +{currentQuestionData.marks}
             </div>
 
             <div className="rounded-md bg-red-50 px-2.5 py-1.5 text-sm font-bold text-red-500">
@@ -1042,7 +1073,9 @@ export default function AttemptPage() {
             </button>
           </div>
 
-          {/* Question scroll area */}
+          {/* ========================================================
+              QUESTION SCROLL AREA
+          ========================================================= */}
 
           <div
             ref={questionBodyRef}
@@ -1050,7 +1083,7 @@ export default function AttemptPage() {
           >
             <div className="px-5 py-6 lg:px-10 lg:py-7">
               <div className="mx-auto max-w-[1000px]">
-                {/* Question text */}
+                {/* Question */}
 
                 <div className="mb-9 whitespace-pre-wrap text-[20px] font-normal leading-[1.7] text-slate-800 lg:text-[21px]">
                   {
@@ -1058,7 +1091,9 @@ export default function AttemptPage() {
                   }
                 </div>
 
-                {/* Options */}
+                {/* ==================================================
+                    Options
+                ================================================== */}
 
                 <div className="flex flex-col gap-4">
                   {currentQuestionData.options.map(
@@ -1068,13 +1103,14 @@ export default function AttemptPage() {
                         index;
 
                       const letter =
+                        option.label ||
                         String.fromCharCode(
                           65 + index
                         );
 
                       return (
                         <button
-                          key={`${currentQuestionData.id}-${index}`}
+                          key={`${currentQuestionData.id}-${option.id}`}
                           type="button"
                           onClick={() =>
                             handleOptionClick(
@@ -1104,7 +1140,7 @@ export default function AttemptPage() {
                                 : "font-medium text-slate-700"
                             }`}
                           >
-                            {option}
+                            {option.text}
                           </span>
                         </button>
                       );
@@ -1120,8 +1156,8 @@ export default function AttemptPage() {
           {/* ========================================================
               LEFT QUESTION FOOTER
 
-              Prev / Next yahi hain.
-              Palette ke andar nahi.
+              Prev / Next yahin hain.
+              Palette mein nahi.
           ========================================================= */}
 
           <div className="flex h-[80px] shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 shadow-[0_-1px_3px_rgba(0,0,0,0.02)] lg:px-10">
@@ -1187,8 +1223,6 @@ export default function AttemptPage() {
 
           {/* ========================================================
               STATUS LEGEND
-
-              Counts are shown inside the icons.
           ========================================================= */}
 
           <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-4 border-b border-slate-200 bg-white px-6 py-5">
@@ -1231,7 +1265,7 @@ export default function AttemptPage() {
               </span>
             </div>
 
-            {/* Marked */}
+            {/* Review Only */}
 
             <div className="flex items-center gap-2">
               <LegendIcon
@@ -1263,55 +1297,61 @@ export default function AttemptPage() {
           </div>
 
           {/* ========================================================
-              QUESTIONS
+              QUESTION GRID
 
               Only this part scrolls.
-
-              Submit button stays fixed at bottom.
+              Submit stays fixed at bottom.
           ========================================================= */}
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <div className="grid grid-cols-5 gap-x-3 gap-y-4">
-              {Array.from(
-                {
-                  length: totalQuestions,
-                },
-                (_, index) => index + 1
-              ).map((number) => {
-                const item =
-                  questionsState[number] || {
-                    visited: false,
-                    selectedOption: null,
-                    markedForReview: false,
-                    timeSpentSeconds: 0,
-                  };
+              {questions.map(
+                (_, index) => {
+                  const number = index + 1;
 
-                return (
-                  <button
-                    key={number}
-                    type="button"
-                    onClick={() =>
-                      goToQuestion(number)
-                    }
-                    className="flex items-center justify-center"
-                  >
-                    <PaletteIcon
-                      status={getStatus(item)}
-                      number={number}
-                      current={
-                        currentQuestion ===
-                        number
+                  const item =
+                    questionsState[
+                      number
+                    ] || {
+                      visited: false,
+                      selectedOption: null,
+                      markedForReview:
+                        false,
+                      timeSpentSeconds: 0,
+                    };
+
+                  return (
+                    <button
+                      key={number}
+                      type="button"
+                      onClick={() =>
+                        goToQuestion(
+                          number
+                        )
                       }
-                    />
-                  </button>
-                );
-              })}
+                      className="flex items-center justify-center"
+                    >
+                      <PaletteIcon
+                        status={getStatus(
+                          item
+                        )}
+                        number={number}
+                        current={
+                          currentQuestion ===
+                          number
+                        }
+                      />
+                    </button>
+                  );
+                }
+              )}
             </div>
           </div>
 
           {/* ========================================================
               PALETTE SUBMIT FOOTER
-              Fixed at bottom of palette.
+
+              Fixed at palette bottom.
           ========================================================= */}
 
           <div className="shrink-0 border-t border-slate-200 bg-white p-4">
@@ -1343,7 +1383,7 @@ export default function AttemptPage() {
             />
 
             <aside className="fixed right-0 top-0 z-[301] flex h-full w-[320px] max-w-[88vw] flex-col bg-[#f8fafc] shadow-2xl lg:hidden">
-              {/* Mobile heading */}
+              {/* Mobile Heading */}
 
               <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
                 <div className="text-[17px] font-extrabold text-slate-800">
@@ -1353,7 +1393,9 @@ export default function AttemptPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setMobilePalette(false)
+                    setMobilePalette(
+                      false
+                    )
                   }
                   className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
                 >
@@ -1361,7 +1403,7 @@ export default function AttemptPage() {
                 </button>
               </div>
 
-              {/* Mobile legend */}
+              {/* Mobile Legend */}
 
               <div className="grid shrink-0 grid-cols-2 gap-4 border-b border-slate-200 bg-white p-5">
                 <div className="flex items-center gap-2">
@@ -1377,7 +1419,9 @@ export default function AttemptPage() {
 
                 <div className="flex items-center gap-2">
                   <LegendIcon
-                    type={STATUS.NOT_ANSWERED}
+                    type={
+                      STATUS.NOT_ANSWERED
+                    }
                     count={notAnsweredCount}
                   />
 
@@ -1388,7 +1432,9 @@ export default function AttemptPage() {
 
                 <div className="flex items-center gap-2">
                   <LegendIcon
-                    type={STATUS.NOT_VISITED}
+                    type={
+                      STATUS.NOT_VISITED
+                    }
                     count={notVisitedCount}
                   />
 
@@ -1410,8 +1456,12 @@ export default function AttemptPage() {
 
                 <div className="col-span-2 flex items-center gap-2">
                   <LegendIcon
-                    type={STATUS.ANSWERED_REVIEW}
-                    count={answeredReviewCount}
+                    type={
+                      STATUS.ANSWERED_REVIEW
+                    }
+                    count={
+                      answeredReviewCount
+                    }
                   />
 
                   <span className="text-xs font-semibold">
@@ -1420,55 +1470,68 @@ export default function AttemptPage() {
                 </div>
               </div>
 
-              {/* Mobile question grid */}
+              {/* Mobile Questions */}
 
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 <div className="grid grid-cols-5 gap-4">
-                  {Array.from(
-                    {
-                      length: totalQuestions,
-                    },
-                    (_, index) => index + 1
-                  ).map((number) => {
-                    const item =
-                      questionsState[number] || {
-                        visited: false,
-                        selectedOption: null,
-                        markedForReview: false,
-                        timeSpentSeconds: 0,
-                      };
+                  {questions.map(
+                    (_, index) => {
+                      const number =
+                        index + 1;
 
-                    return (
-                      <button
-                        key={number}
-                        type="button"
-                        onClick={() =>
-                          goToQuestion(number)
-                        }
-                        className="flex items-center justify-center"
-                      >
-                        <PaletteIcon
-                          status={getStatus(item)}
-                          number={number}
-                          current={
-                            currentQuestion ===
-                            number
+                      const item =
+                        questionsState[
+                          number
+                        ] || {
+                          visited: false,
+                          selectedOption:
+                            null,
+                          markedForReview:
+                            false,
+                          timeSpentSeconds: 0,
+                        };
+
+                      return (
+                        <button
+                          key={number}
+                          type="button"
+                          onClick={() =>
+                            goToQuestion(
+                              number
+                            )
                           }
-                        />
-                      </button>
-                    );
-                  })}
+                          className="flex items-center justify-center"
+                        >
+                          <PaletteIcon
+                            status={getStatus(
+                              item
+                            )}
+                            number={number}
+                            current={
+                              currentQuestion ===
+                              number
+                            }
+                          />
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
               </div>
 
-              {/* Mobile submit */}
+              {/* Mobile Submit */}
 
               <div className="shrink-0 border-t border-slate-200 bg-white p-4">
                 <button
                   type="button"
                   onClick={() => {
-                    setMobilePalette(false);
-                    setShowSubmitModal(true);
+                    setMobilePalette(
+                      false
+                    );
+
+                    setShowSubmitModal(
+                      true
+                    );
                   }}
                   className="w-full rounded-md bg-gradient-to-r from-[#d41445] to-[#e3003f] px-5 py-3.5 text-sm font-extrabold tracking-wide text-white shadow-[0_4px_10px_rgba(212,20,69,0.2)]"
                 >
@@ -1483,95 +1546,141 @@ export default function AttemptPage() {
       {/* ============================================================
           SUBMIT MODAL
       ============================================================ */}
+{showSubmitModal && (
+  <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-md">
+    <div className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.25)]">
+      {/* Top accent */}
 
-      {showSubmitModal && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/70 px-5 backdrop-blur-[4px]">
-          <div className="w-full max-w-[480px] rounded-2xl border-t-[6px] border-red-500 bg-white p-8 text-center shadow-2xl">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-500">
-              {autoSubmit ? (
-                <AlertTriangle className="h-7 w-7" />
-              ) : (
-                <Flag className="h-7 w-7" />
-              )}
-            </div>
+      <div className="h-1.5 w-full bg-gradient-to-r from-[#ef1118] via-[#ff4350] to-[#ef1118]" />
 
-            <h2 className="mt-5 text-2xl font-bold text-slate-800">
-              {autoSubmit
-                ? "Time's Up"
-                : "Submit Test?"}
-            </h2>
+      <div className="p-7 sm:p-8">
+        {/* Icon */}
 
-            <p className="mt-3 text-sm leading-6 text-slate-500">
-              {autoSubmit
-                ? "The examination time has ended. Your test will be submitted automatically."
-                : "Are you sure you want to submit the test? You will not be able to continue after submission."}
-            </p>
+        <div className="flex justify-center">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-2xl bg-red-100 blur-xl" />
 
-            {/* Submit stats */}
-
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-lg font-bold text-slate-800">
-                  {answeredCount}
-                </div>
-
-                <div className="text-[11px] font-semibold text-slate-500">
-                  Answered
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-lg font-bold text-slate-800">
-                  {notAnsweredCount}
-                </div>
-
-                <div className="text-[11px] font-semibold text-slate-500">
-                  Not Answered
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-lg font-bold text-slate-800">
-                  {notVisitedCount}
-                </div>
-
-                <div className="text-[11px] font-semibold text-slate-500">
-                  Not Visited
-                </div>
-              </div>
-            </div>
-
-            {/* Buttons */}
-
-            <div className="mt-7 flex items-center justify-center gap-3">
-              {!autoSubmit && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowSubmitModal(
-                      false
-                    )
-                  }
-                  className="rounded-lg border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
-                >
-                  Continue Test
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={submitTest}
-                className="rounded-lg bg-red-600 px-7 py-3 text-sm font-bold text-white shadow-[0_4px_10px_rgba(220,38,38,0.2)] hover:bg-red-700"
-              >
-                {autoSubmit
-                  ? "Submit Test"
-                  : "Yes, Submit"}
-              </button>
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-[#ef1118] text-white shadow-lg shadow-red-200">
+              <Flag className="h-7 w-7" />
             </div>
           </div>
         </div>
-      )}
 
+        {/* Heading */}
+
+        <div className="mt-6 text-center">
+          <h2 className="text-2xl font-black tracking-tight text-slate-900">
+            Submit Your Test?
+          </h2>
+
+          <p className="mx-auto mt-2 max-w-[390px] text-sm leading-6 text-slate-500">
+            You're about to submit your test.
+            Please review your attempt before
+            continuing.
+          </p>
+        </div>
+
+        {/* Stats */}
+
+        <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+            <div className="text-xl font-black text-slate-900">
+              {answeredCount}
+            </div>
+
+            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              Attempted
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+            <div className="text-xl font-black text-slate-900">
+              {notAnsweredCount}
+            </div>
+
+            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              Unanswered
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+            <div className="text-xl font-black text-slate-900">
+              {markedCount}
+            </div>
+
+            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              Review
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+            <div className="text-xl font-black text-slate-900">
+              {isFixedTimer
+                ? formatTime(
+                    Math.max(
+                      Number(
+                        test?.duration_minutes ||
+                          0
+                      ) *
+                        60 -
+                        Number(
+                          remainingSeconds || 0
+                        ),
+                      0
+                    )
+                  )
+                : formatTime(
+                    elapsedSeconds
+                  )}
+            </div>
+
+            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+              Time
+            </div>
+          </div>
+        </div>
+
+        {/* Warning */}
+
+        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="mt-0.5 shrink-0 text-amber-600">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+
+          <p className="text-xs font-medium leading-5 text-amber-800">
+            Once you submit the test, you won't be
+            able to change your answers.
+          </p>
+        </div>
+
+        {/* Actions */}
+
+        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={() =>
+              setShowSubmitModal(false)
+            }
+            disabled={autoSubmit}
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Continue Test
+          </button>
+
+          <button
+            type="button"
+            onClick={submitTest}
+            className="group flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#ef1118] px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-red-200 transition hover:-translate-y-0.5 hover:bg-[#d90e15]"
+          >
+            Yes, Submit Test
+
+            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       {/* ============================================================
           FULLSCREEN WARNING
       ============================================================ */}
@@ -1590,11 +1699,14 @@ export default function AttemptPage() {
             <div className="mt-4 text-sm leading-6 text-slate-600">
               You have exited Full-Screen Mode.
               <br />
+
               <strong>
                 Warning {fullscreenWarnings} of 3.
               </strong>
+
               <br />
               <br />
+
               If you exit full-screen one more time,
               your test will be{" "}
               <strong>
