@@ -223,7 +223,7 @@ export default function DashboardPage() {
       return;
     }
 
-    router.push(`/test/${test.id}/attempt`);
+    router.push(`/test/${test.id}/instructions`);
   };
 
   const handleLogout = async () => {

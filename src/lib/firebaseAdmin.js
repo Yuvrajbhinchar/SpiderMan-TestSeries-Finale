@@ -18,5 +18,4 @@ const firebaseAdmin =
     : getApps()[0];
 
 export const adminAuth = getAuth(firebaseAdmin);
-
 export default firebaseAdmin;

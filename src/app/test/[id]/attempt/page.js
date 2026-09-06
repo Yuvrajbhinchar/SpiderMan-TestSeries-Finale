@@ -1,18 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  useParams,
+  useRouter,
+} from "next/navigation";
+import {
+  onAuthStateChanged,
+} from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import SpiderManLoader from "@/components/common/SpiderManLoader";
+
 import {
   Check,
   ChevronLeft,
   ChevronRight,
   Flag,
-  Loader2,
   X,
   Clock3,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
+
+/*
+|--------------------------------------------------------------------------
+| STATUS
+|--------------------------------------------------------------------------
+*/
 
 const STATUS = {
   NOT_VISITED: "not_visited",
@@ -24,7 +43,7 @@ const STATUS = {
 
 /*
 |--------------------------------------------------------------------------
-| Question State
+| QUESTION STATE
 |--------------------------------------------------------------------------
 */
 
@@ -42,6 +61,12 @@ function createQuestionState(total) {
 
   return state;
 }
+
+/*
+|--------------------------------------------------------------------------
+| QUESTION STATUS
+|--------------------------------------------------------------------------
+*/
 
 function getStatus(item) {
   if (!item?.visited) {
@@ -68,7 +93,7 @@ function getStatus(item) {
 
 /*
 |--------------------------------------------------------------------------
-| Time
+| FORMAT TIME
 |--------------------------------------------------------------------------
 */
 
@@ -78,7 +103,9 @@ function formatTime(seconds) {
     Number(seconds) || 0
   );
 
-  const hours = Math.floor(total / 3600);
+  const hours = Math.floor(
+    total / 3600
+  );
 
   const minutes = Math.floor(
     (total % 3600) / 60
@@ -95,7 +122,7 @@ function formatTime(seconds) {
 
 /*
 |--------------------------------------------------------------------------
-| Palette Question Status
+| PALETTE ICON
 |--------------------------------------------------------------------------
 */
 
@@ -182,12 +209,16 @@ function PaletteIcon({
 
 /*
 |--------------------------------------------------------------------------
-| Legend
+| LEGEND ICON
 |--------------------------------------------------------------------------
 */
 
-function LegendIcon({ type, count }) {
-  const displayCount = Number(count || 0);
+function LegendIcon({
+  type,
+  count,
+}) {
+  const displayCount =
+    Number(count || 0);
 
   if (type === STATUS.ANSWERED) {
     return (
@@ -232,85 +263,263 @@ function LegendIcon({ type, count }) {
   );
 }
 
+/*
+|--------------------------------------------------------------------------
+| PAGE
+|--------------------------------------------------------------------------
+*/
+
 export default function AttemptPage() {
   const { id } = useParams();
+  const router = useRouter();
 
   /*
   |--------------------------------------------------------------------------
-  | Main State
+  | AUTH / LOADING
   |--------------------------------------------------------------------------
   */
 
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] =
+    useState(null);
 
-  const [test, setTest] = useState(null);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [questions, setQuestions] = useState([]);
+  const [loadError, setLoadError] =
+    useState("");
 
-  const [currentQuestion, setCurrentQuestion] =
-    useState(1);
+  /*
+  |--------------------------------------------------------------------------
+  | TEST / ATTEMPT
+  |--------------------------------------------------------------------------
+  */
 
-  const [questionsState, setQuestionsState] =
-    useState({});
+  const [test, setTest] =
+    useState(null);
 
-  const [elapsedSeconds, setElapsedSeconds] =
-    useState(0);
+  const [attempt, setAttempt] =
+    useState(null);
 
-  const [remainingSeconds, setRemainingSeconds] =
-    useState(0);
+  const [questions, setQuestions] =
+    useState([]);
 
-  const [showSubmitModal, setShowSubmitModal] =
-    useState(false);
+  /*
+  |--------------------------------------------------------------------------
+  | QUESTION STATE
+  |--------------------------------------------------------------------------
+  */
 
-  const [autoSubmit, setAutoSubmit] =
-    useState(false);
+  const [
+    currentQuestion,
+    setCurrentQuestion,
+  ] = useState(1);
 
-  const [submitted, setSubmitted] =
-    useState(false);
+  const [
+    questionsState,
+    setQuestionsState,
+  ] = useState({});
 
-  const [fullscreenWarnings, setFullscreenWarnings] =
-    useState(0);
+  /*
+  |--------------------------------------------------------------------------
+  | TIMER
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    elapsedSeconds,
+    setElapsedSeconds,
+  ] = useState(0);
+
+  const [
+    remainingSeconds,
+    setRemainingSeconds,
+  ] = useState(0);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SUBMIT / UI STATE
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    showSubmitModal,
+    setShowSubmitModal,
+  ] = useState(false);
+
+  const [
+    autoSubmit,
+    setAutoSubmit,
+  ] = useState(false);
+
+  const [
+    submitted,
+    setSubmitted,
+  ] = useState(false);
+
+  const [
+    submitting,
+    setSubmitting,
+  ] = useState(false);
+
+  /*
+  |--------------------------------------------------------------------------
+  | FULLSCREEN
+  |--------------------------------------------------------------------------
+  */
+
+  const [
+    fullscreenWarnings,
+    setFullscreenWarnings,
+  ] = useState(0);
 
   const [
     showFullscreenWarning,
     setShowFullscreenWarning,
   ] = useState(false);
 
-  const [mobilePalette, setMobilePalette] =
-    useState(false);
+  /*
+  |--------------------------------------------------------------------------
+  | MOBILE PALETTE
+  |--------------------------------------------------------------------------
+  */
 
-  const [loadError, setLoadError] =
-    useState("");
-
-  const questionBodyRef = useRef(null);
+  const [
+    mobilePalette,
+    setMobilePalette,
+  ] = useState(false);
 
   /*
   |--------------------------------------------------------------------------
-  | Load Instructions + Real Questions
+  | REFS
+  |--------------------------------------------------------------------------
+  */
+
+  const questionBodyRef =
+    useRef(null);
+
+  const startedAtRef =
+    useRef(null);
+
+  /*
+  |--------------------------------------------------------------------------
+  | FIREBASE AUTH
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (!id) return;
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (firebaseUser) => {
+          if (!firebaseUser) {
+            router.replace(
+              "/auth/login"
+            );
+            return;
+          }
+
+          setUser(firebaseUser);
+        }
+      );
+
+    return () =>
+      unsubscribe();
+  }, [router]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD / START / RESUME TEST
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!id || !user) {
+      return;
+    }
 
     let cancelled = false;
 
-    const loadTest = async () => {
+    async function loadTest() {
       try {
         setLoading(true);
         setLoadError("");
+
+        /*
+        |--------------------------------------------------------------------------
+        | FIREBASE TOKEN
+        |--------------------------------------------------------------------------
+        */
+
+        const idToken =
+          await user.getIdToken(true);
+
+        /*
+        |--------------------------------------------------------------------------
+        | CREATE / RESUME ATTEMPT
+        |--------------------------------------------------------------------------
+        */
+
+        const attemptResponse =
+          await fetch(
+            `/api/test/${id}/attempt`,
+            {
+              method: "POST",
+              headers: {
+                Authorization:
+                  `Bearer ${idToken}`,
+                "Content-Type":
+                  "application/json",
+              },
+              cache: "no-store",
+            }
+          );
+
+        const attemptData =
+          await attemptResponse.json();
+
+        if (
+          !attemptResponse.ok ||
+          !attemptData.success
+        ) {
+          throw new Error(
+            attemptData.error ||
+              "Unable to start your test."
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const loadedAttempt =
+          attemptData.attempt;
+
+        setAttempt(
+          loadedAttempt
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | LOAD INSTRUCTIONS + QUESTIONS
+        |--------------------------------------------------------------------------
+        */
 
         const [
           instructionsResponse,
           questionsResponse,
         ] = await Promise.all([
-          fetch(`/api/test/${id}/instructions`, {
-            cache: "no-store",
-          }),
-
-          fetch(`/api/test/${id}/questions`, {
-            cache: "no-store",
-          }),
+          fetch(
+            `/api/test/${id}/instructions`,
+            {
+              cache: "no-store",
+            }
+          ),
+          fetch(
+            `/api/test/${id}/questions`,
+            {
+              cache: "no-store",
+            }
+          ),
         ]);
 
         const instructionsData =
@@ -319,14 +528,18 @@ export default function AttemptPage() {
         const questionsData =
           await questionsResponse.json();
 
-        if (!instructionsResponse.ok) {
+        if (
+          !instructionsResponse.ok
+        ) {
           throw new Error(
             instructionsData.error ||
               "Unable to load test."
           );
         }
 
-        if (!questionsResponse.ok) {
+        if (
+          !questionsResponse.ok
+        ) {
           throw new Error(
             questionsData.error ||
               "Unable to load test questions."
@@ -344,64 +557,196 @@ export default function AttemptPage() {
             ? questionsData.questions
             : [];
 
-        /*
-        |--------------------------------------------------------------------------
-        | Test
-        |--------------------------------------------------------------------------
-        */
+        setTest(
+          instructionsData.test
+        );
 
-        setTest(instructionsData.test);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Questions
-        |--------------------------------------------------------------------------
-        */
-
-        setQuestions(loadedQuestions);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Initial Question State
-        |--------------------------------------------------------------------------
-        */
-
-        setQuestionsState(
-          createQuestionState(
-            loadedQuestions.length
-          )
+        setQuestions(
+          loadedQuestions
         );
 
         /*
         |--------------------------------------------------------------------------
-        | Initial Timer
+        | ATTEMPT-SPECIFIC LOCAL STATE
         |--------------------------------------------------------------------------
         */
 
-        const isDpp = Boolean(
-          instructionsData.test?.is_dpp
-        );
+        const storageKey =
+          `spiderman_attempt_${loadedAttempt.id}`;
 
-        if (!isDpp) {
-          const duration = Number(
-            instructionsData.test
-              ?.duration_minutes || 0
-          );
+        let savedData = null;
 
-          setRemainingSeconds(
-            Math.max(duration * 60, 0)
+        try {
+          const raw =
+            localStorage.getItem(
+              storageKey
+            );
+
+          if (raw) {
+            savedData =
+              JSON.parse(raw);
+          }
+        } catch (storageError) {
+          console.warn(
+            "Unable to restore test state:",
+            storageError
           );
-        } else {
-          setRemainingSeconds(0);
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Reset Current Question
+        | QUESTION STATE
         |--------------------------------------------------------------------------
         */
 
-        setCurrentQuestion(1);
+        const initialState =
+          createQuestionState(
+            loadedQuestions.length
+          );
+
+        if (
+          savedData?.questionsState &&
+          typeof savedData.questionsState ===
+            "object"
+        ) {
+          Object.keys(
+            savedData.questionsState
+          ).forEach((number) => {
+            if (
+              initialState[number]
+            ) {
+              initialState[number] = {
+                ...initialState[number],
+                ...savedData.questionsState[
+                  number
+                ],
+              };
+            }
+          });
+        }
+
+        setQuestionsState(
+          initialState
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | CURRENT QUESTION
+        |--------------------------------------------------------------------------
+        */
+
+        const savedQuestion =
+          Number(
+            savedData?.currentQuestion
+          );
+
+        const restoredQuestion =
+          Number.isInteger(
+            savedQuestion
+          ) &&
+          savedQuestion >= 1 &&
+          savedQuestion <=
+            loadedQuestions.length
+            ? savedQuestion
+            : 1;
+
+        setCurrentQuestion(
+          restoredQuestion
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | START TIME
+        |--------------------------------------------------------------------------
+        */
+
+        const storedTimer =
+          Number(
+            savedData?.timerStartedAt
+          );
+
+        const attemptStartedAt =
+          Number(
+            loadedAttempt?.started_at
+          );
+
+        const startedAtMs =
+          storedTimer > 0
+            ? storedTimer
+            : attemptStartedAt > 0
+              ? attemptStartedAt *
+                1000
+              : Date.now();
+
+        startedAtRef.current =
+          startedAtMs;
+
+        /*
+        |--------------------------------------------------------------------------
+        | TIMER
+        |--------------------------------------------------------------------------
+        */
+
+        const isDpp =
+          Boolean(
+            instructionsData
+              .test?.is_dpp
+          );
+
+        if (!isDpp) {
+          const duration =
+            Number(
+              instructionsData.test
+                ?.duration_minutes ||
+                0
+            );
+
+          const elapsed =
+            Math.floor(
+              (Date.now() -
+                startedAtMs) /
+                1000
+            );
+
+          setRemainingSeconds(
+            Math.max(
+              duration * 60 -
+                elapsed,
+              0
+            )
+          );
+        } else {
+          setRemainingSeconds(0);
+
+          setElapsedSeconds(
+            Math.max(
+              0,
+              Math.floor(
+                (Date.now() -
+                  startedAtMs) /
+                  1000
+              )
+            )
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | SAVE INITIAL LOCAL STATE
+        |--------------------------------------------------------------------------
+        */
+
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            currentQuestion:
+              restoredQuestion,
+            questionsState:
+              initialState,
+            timerStartedAt:
+              startedAtMs,
+          })
+        );
       } catch (error) {
         console.error(
           "Attempt page error:",
@@ -419,34 +764,80 @@ export default function AttemptPage() {
           setLoading(false);
         }
       }
-    };
+    }
 
     loadTest();
 
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, user]);
 
   /*
   |--------------------------------------------------------------------------
-  | Derived Values
+  | SAVE STATE LOCALLY
   |--------------------------------------------------------------------------
   */
 
-  const totalQuestions = questions.length;
+  useEffect(() => {
+    if (
+      !attempt?.id ||
+      !questions.length
+    ) {
+      return;
+    }
 
-  const isDpp = Boolean(test?.is_dpp);
+    try {
+      localStorage.setItem(
+        `spiderman_attempt_${attempt.id}`,
+        JSON.stringify({
+          currentQuestion,
+          questionsState,
+          timerStartedAt:
+            startedAtRef.current ||
+            Date.now(),
+        })
+      );
+    } catch (error) {
+      console.warn(
+        "Unable to save test state:",
+        error
+      );
+    }
+  }, [
+    attempt?.id,
+    currentQuestion,
+    questionsState,
+    questions.length,
+  ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | DERIVED
+  |--------------------------------------------------------------------------
+  */
+
+  const totalQuestions =
+    questions.length;
+
+  const isDpp =
+    Boolean(test?.is_dpp);
 
   const isFixedTimer =
     !isDpp &&
-    Number(test?.duration_minutes || 0) > 0;
+    Number(
+      test?.duration_minutes || 0
+    ) > 0;
 
   const currentQuestionData =
-    questions[currentQuestion - 1] || null;
+    questions[
+      currentQuestion - 1
+    ] || null;
 
   const currentState =
-    questionsState[currentQuestion] || {
+    questionsState[
+      currentQuestion
+    ] || {
       visited: false,
       selectedOption: null,
       markedForReview: false,
@@ -454,13 +845,14 @@ export default function AttemptPage() {
     };
 
   const subjectName =
-    currentQuestionData?.subjectName ||
+    currentQuestionData
+      ?.subjectName ||
     test?.sections?.[0]?.name ||
     "Mathematics";
 
   /*
   |--------------------------------------------------------------------------
-  | Timer
+  | MAIN TIMER
   |--------------------------------------------------------------------------
   */
 
@@ -473,33 +865,50 @@ export default function AttemptPage() {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      if (isFixedTimer) {
-        setRemainingSeconds((previous) => {
-          if (previous <= 1) {
-            window.clearInterval(timer);
+    const timer =
+      window.setInterval(() => {
+        if (isFixedTimer) {
+          setRemainingSeconds(
+            (previous) => {
+              if (
+                previous <= 1
+              ) {
+                window.clearInterval(
+                  timer
+                );
 
-            setRemainingSeconds(0);
-            setAutoSubmit(true);
-            setShowSubmitModal(true);
+                setRemainingSeconds(
+                  0
+                );
 
-            return 0;
-          }
+                setAutoSubmit(
+                  true
+                );
 
-          return previous - 1;
-        });
+                setShowSubmitModal(
+                  true
+                );
 
-        return;
-      }
+                return 0;
+              }
 
-      setElapsedSeconds(
-        (previous) => previous + 1
+              return previous - 1;
+            }
+          );
+
+          return;
+        }
+
+        setElapsedSeconds(
+          (previous) =>
+            previous + 1
+        );
+      }, 1000);
+
+    return () =>
+      window.clearInterval(
+        timer
       );
-    }, 1000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
   }, [
     loading,
     submitted,
@@ -509,7 +918,7 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Per Question Timer
+  | PER QUESTION TIMER
   |--------------------------------------------------------------------------
   */
 
@@ -522,31 +931,38 @@ export default function AttemptPage() {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      setQuestionsState((previous) => {
-        const item =
-          previous[currentQuestion];
+    const timer =
+      window.setInterval(() => {
+        setQuestionsState(
+          (previous) => {
+            const item =
+              previous[
+                currentQuestion
+              ];
 
-        if (!item) {
-          return previous;
-        }
+            if (!item) {
+              return previous;
+            }
 
-        return {
-          ...previous,
+            return {
+              ...previous,
+              [currentQuestion]: {
+                ...item,
+                timeSpentSeconds:
+                  Number(
+                    item.timeSpentSeconds ||
+                      0
+                  ) + 1,
+              },
+            };
+          }
+        );
+      }, 1000);
 
-          [currentQuestion]: {
-            ...item,
-
-            timeSpentSeconds:
-              item.timeSpentSeconds + 1,
-          },
-        };
-      });
-    }, 1000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
+    return () =>
+      window.clearInterval(
+        timer
+      );
   }, [
     loading,
     submitted,
@@ -556,57 +972,63 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Scroll to Top on Question Change
+  | SCROLL TOP
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (questionBodyRef.current) {
+    if (
+      questionBodyRef.current
+    ) {
       questionBodyRef.current.scrollTop = 0;
     }
   }, [currentQuestion]);
 
   /*
   |--------------------------------------------------------------------------
-  | Fullscreen Monitoring
+  | FULLSCREEN MONITORING
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
-    if (loading || submitted) {
+    if (
+      loading ||
+      submitted
+    ) {
       return;
     }
 
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        setFullscreenWarnings((previous) => {
-          const next = previous + 1;
+    const handleFullscreenChange =
+      () => {
+        if (
+          !document.fullscreenElement
+        ) {
+          setFullscreenWarnings(
+            (previous) => {
+              const next =
+                previous + 1;
 
-          /*
-          |--------------------------------------------------------------------------
-          | Warning 1 / 2 / 3
-          |--------------------------------------------------------------------------
-          */
+              if (next <= 3) {
+                setShowFullscreenWarning(
+                  true
+                );
+              }
 
-          if (next <= 3) {
-            setShowFullscreenWarning(true);
-          }
+              if (next >= 3) {
+                setAutoSubmit(
+                  true
+                );
 
-          /*
-          |--------------------------------------------------------------------------
-          | Third Exit -> Submit Modal
-          |--------------------------------------------------------------------------
-          */
+                setShowSubmitModal(
+                  true
+                );
+              }
 
-          if (next >= 3) {
-            setAutoSubmit(true);
-            setShowSubmitModal(true);
-          }
-
-          return next;
-        });
-      }
-    };
+              return next;
+            }
+          );
+        }
+      };
 
     document.addEventListener(
       "fullscreenchange",
@@ -623,210 +1045,167 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Enter Fullscreen
+  | ENTER FULLSCREEN
   |--------------------------------------------------------------------------
   */
 
-  const enterFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
+  const enterFullscreen =
+    async () => {
+      try {
+        if (
+          !document.fullscreenElement
+        ) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (error) {
+        console.error(
+          "Fullscreen error:",
+          error
+        );
       }
-    } catch (error) {
-      console.error(
-        "Fullscreen error:",
-        error
-      );
-    }
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | Navigation
-  |--------------------------------------------------------------------------
-  */
-
-  const goToQuestion = (number) => {
-    if (
-      number < 1 ||
-      number > totalQuestions
-    ) {
-      return;
-    }
-
-    setCurrentQuestion(number);
-
-    setQuestionsState((previous) => ({
-      ...previous,
-
-      [number]: {
-        ...(previous[number] || {}),
-        visited: true,
-      },
-    }));
-
-    setMobilePalette(false);
-  };
-
-  const nextQuestion = () => {
-    if (
-      currentQuestion >= totalQuestions
-    ) {
-      return;
-    }
-
-    goToQuestion(
-      currentQuestion + 1
-    );
-  };
-
-  const previousQuestion = () => {
-    if (currentQuestion <= 1) {
-      return;
-    }
-
-    goToQuestion(
-      currentQuestion - 1
-    );
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | Option Selection
-  |--------------------------------------------------------------------------
-  */
-
-  const handleOptionClick = (index) => {
-    setQuestionsState((previous) => {
-      const item =
-        previous[currentQuestion] || {};
-
-      const sameOption =
-        item.selectedOption === index;
-
-      return {
-        ...previous,
-
-        [currentQuestion]: {
-          ...item,
-
-          visited: true,
-
-          /*
-          |--------------------------------------------------------------------------
-          | Clicking selected option again clears it
-          |--------------------------------------------------------------------------
-          */
-
-          selectedOption: sameOption
-            ? null
-            : index,
-        },
-      };
-    });
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | Mark for Review
-  |--------------------------------------------------------------------------
-  */
-
-  const toggleReview = () => {
-    setQuestionsState((previous) => {
-      const item =
-        previous[currentQuestion] || {};
-
-      return {
-        ...previous,
-
-        [currentQuestion]: {
-          ...item,
-
-          visited: true,
-
-          markedForReview:
-            !item.markedForReview,
-        },
-      };
-    });
-  };
-
-  /*
-  |--------------------------------------------------------------------------
-  | Submit
-  |--------------------------------------------------------------------------
-  */
-
-  const submitTest = () => {
-  try {
-    const resultData = {
-      testId: String(id),
-      testTitle: test?.title || "Test",
-
-      totalQuestions,
-      answered: answeredCount,
-      notAnswered: notAnsweredCount,
-      notVisited: notVisitedCount,
-
-      markedForReview: markedCount,
-      answeredAndMarked:
-        answeredReviewCount,
-
-      elapsedSeconds: isFixedTimer
-        ? Math.max(
-            Number(test?.duration_minutes || 0) *
-              60 -
-              Number(remainingSeconds || 0),
-            0
-          )
-        : elapsedSeconds,
-
-      submittedAt: new Date().toISOString(),
     };
 
-    sessionStorage.setItem(
-      `spiderman_test_result_${id}`,
-      JSON.stringify(resultData)
-    );
-
-    sessionStorage.setItem(
-      `spiderman_test_state_${id}`,
-      JSON.stringify(questionsState)
-    );
-
-    setShowSubmitModal(false);
-
-    /*
-     * Result page par redirect.
-     */
-    window.location.href =
-      `/test/${id}/result`;
-  } catch (error) {
-    console.error(
-      "Submit navigation error:",
-      error
-    );
-
-    setShowSubmitModal(false);
-  }
-};
   /*
   |--------------------------------------------------------------------------
-  | Palette Statistics
+  | NAVIGATION
   |--------------------------------------------------------------------------
   */
 
-  const answeredCount = useMemo(
-    () =>
-      Object.values(
-        questionsState
-      ).filter(
-        (item) =>
-          item.selectedOption !== null
-      ).length,
-    [questionsState]
-  );
+  const goToQuestion =
+    (number) => {
+      if (
+        number < 1 ||
+        number > totalQuestions
+      ) {
+        return;
+      }
+
+      setCurrentQuestion(number);
+
+      setQuestionsState(
+        (previous) => ({
+          ...previous,
+          [number]: {
+            ...(previous[number] ||
+              {}),
+            visited: true,
+          },
+        })
+      );
+
+      setMobilePalette(false);
+    };
+
+  const nextQuestion =
+    () => {
+      if (
+        currentQuestion >=
+        totalQuestions
+      ) {
+        return;
+      }
+
+      goToQuestion(
+        currentQuestion + 1
+      );
+    };
+
+  const previousQuestion =
+    () => {
+      if (
+        currentQuestion <= 1
+      ) {
+        return;
+      }
+
+      goToQuestion(
+        currentQuestion - 1
+      );
+    };
+
+  /*
+  |--------------------------------------------------------------------------
+  | OPTION CLICK
+  |--------------------------------------------------------------------------
+  |
+  | Clicking selected option again clears it.
+  |
+  */
+
+  const handleOptionClick =
+    (index) => {
+      setQuestionsState(
+        (previous) => {
+          const item =
+            previous[
+              currentQuestion
+            ] || {};
+
+          const sameOption =
+            item.selectedOption ===
+            index;
+
+          return {
+            ...previous,
+            [currentQuestion]: {
+              ...item,
+              visited: true,
+              selectedOption:
+                sameOption
+                  ? null
+                  : index,
+            },
+          };
+        }
+      );
+    };
+
+  /*
+  |--------------------------------------------------------------------------
+  | MARK FOR REVIEW
+  |--------------------------------------------------------------------------
+  */
+
+  const toggleReview =
+    () => {
+      setQuestionsState(
+        (previous) => {
+          const item =
+            previous[
+              currentQuestion
+            ] || {};
+
+          return {
+            ...previous,
+            [currentQuestion]: {
+              ...item,
+              visited: true,
+              markedForReview:
+                !item.markedForReview,
+            },
+          };
+        }
+      );
+    };
+
+  /*
+  |--------------------------------------------------------------------------
+  | PALETTE STATS
+  |--------------------------------------------------------------------------
+  */
+
+  const answeredCount =
+    useMemo(
+      () =>
+        Object.values(
+          questionsState
+        ).filter(
+          (item) =>
+            item.selectedOption !==
+            null
+        ).length,
+      [questionsState]
+    );
 
   const answeredReviewCount =
     useMemo(
@@ -836,25 +1215,30 @@ export default function AttemptPage() {
         ).filter(
           (item) =>
             item.markedForReview &&
-            item.selectedOption !== null
+            item.selectedOption !==
+              null
         ).length,
       [questionsState]
     );
 
-  const markedCount = useMemo(
-    () =>
-      Object.values(
-        questionsState
-      ).filter(
-        (item) => item.markedForReview
-      ).length,
-    [questionsState]
-  );
+  const markedCount =
+    useMemo(
+      () =>
+        Object.values(
+          questionsState
+        ).filter(
+          (item) =>
+            item.markedForReview
+        ).length,
+      [questionsState]
+    );
 
-  const reviewOnlyCount = Math.max(
-    markedCount - answeredReviewCount,
-    0
-  );
+  const reviewOnlyCount =
+    Math.max(
+      markedCount -
+        answeredReviewCount,
+      0
+    );
 
   const visitedCount =
     Object.values(
@@ -863,10 +1247,12 @@ export default function AttemptPage() {
       (item) => item.visited
     ).length;
 
-  const notVisitedCount = Math.max(
-    totalQuestions - visitedCount,
-    0
-  );
+  const notVisitedCount =
+    Math.max(
+      totalQuestions -
+        visitedCount,
+      0
+    );
 
   const notAnsweredCount =
     Object.values(
@@ -874,25 +1260,312 @@ export default function AttemptPage() {
     ).filter(
       (item) =>
         item.visited &&
-        item.selectedOption === null &&
+        item.selectedOption ===
+          null &&
         !item.markedForReview
     ).length;
 
   /*
   |--------------------------------------------------------------------------
-  | Loading Screen
+  | SECURE SUBMIT
   |--------------------------------------------------------------------------
   */
 
- if (loading) {
-  return (
-    <SpiderManLoader text="Loading Test..." />
-  );
-}
+  const submitTest =
+    async () => {
+      if (
+        submitting ||
+        !user ||
+        !attempt?.id
+      ) {
+        return;
+      }
+
+      try {
+        setSubmitting(true);
+
+        /*
+        |--------------------------------------------------------------------------
+        | FRESH FIREBASE TOKEN
+        |--------------------------------------------------------------------------
+        */
+
+        const idToken =
+          await user.getIdToken(
+            true
+          );
+
+        /*
+        |--------------------------------------------------------------------------
+        | CONVERT UI STATE → API ANSWERS
+        |--------------------------------------------------------------------------
+        */
+
+        const apiAnswers =
+          questions.map(
+            (
+              question,
+              index
+            ) => {
+              const number =
+                index + 1;
+
+              const state =
+                questionsState[
+                  number
+                ];
+
+              let selectedOptionId =
+                null;
+
+              if (
+                state &&
+                state.selectedOption !==
+                  null &&
+                state.selectedOption !==
+                  undefined
+              ) {
+                const option =
+                  question.options?.[
+                    Number(
+                      state.selectedOption
+                    )
+                  ];
+
+                if (option) {
+                  selectedOptionId =
+                    Number(
+                      option.id
+                    );
+                }
+              }
+
+              return {
+                questionId:
+                  Number(
+                    question.id
+                  ),
+
+                selectedOptionId,
+
+                timeSpentSeconds:
+                  Math.max(
+                    0,
+                    Math.floor(
+                      Number(
+                        state?.timeSpentSeconds ||
+                          0
+                      )
+                    )
+                  ),
+              };
+            }
+          );
+
+        /*
+        |--------------------------------------------------------------------------
+        | SUBMIT API
+        |--------------------------------------------------------------------------
+        */
+
+        const response =
+          await fetch(
+            `/api/test/${id}/submit`,
+            {
+              method: "POST",
+              headers: {
+                Authorization:
+                  `Bearer ${idToken}`,
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                attemptId:
+                  Number(
+                    attempt.id
+                  ),
+                answers:
+                  apiAnswers,
+              }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.error ||
+              "Unable to submit test."
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | SAVE REAL SERVER RESULT
+        |--------------------------------------------------------------------------
+        */
+
+        const serverResult =
+          data.result || {};
+
+        const resultData = {
+          testId: String(id),
+
+          testTitle:
+            test?.title ||
+            "Test",
+
+          attemptId:
+            Number(
+              serverResult.attemptId ||
+                attempt.id
+            ),
+
+          attemptNumber:
+            Number(
+              serverResult.attemptNumber ||
+                attempt.attemptNumber ||
+                1
+            ),
+
+          score:
+            Number(
+              serverResult.score || 0
+            ),
+
+          correct:
+            Number(
+              serverResult.correct || 0
+            ),
+
+          wrong:
+            Number(
+              serverResult.wrong || 0
+            ),
+
+          unanswered:
+            Number(
+              serverResult.unanswered ||
+                0
+            ),
+
+          totalQuestions:
+            Number(
+              serverResult.totalQuestions ||
+                totalQuestions
+            ),
+
+          timeTakenSeconds:
+            Number(
+              serverResult.timeTakenSeconds ||
+                0
+            ),
+
+          submittedAt:
+            serverResult.submittedAt ||
+            new Date().toISOString(),
+        };
+
+        sessionStorage.setItem(
+          `spiderman_test_result_${id}`,
+          JSON.stringify(
+            resultData
+          )
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | MARK SUBMITTED
+        |--------------------------------------------------------------------------
+        */
+
+        setSubmitted(true);
+
+        setShowSubmitModal(
+          false
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | REMOVE ACTIVE LOCAL STATE
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+          localStorage.removeItem(
+            `spiderman_attempt_${attempt.id}`
+          );
+        } catch (storageError) {
+          console.warn(
+            "Unable to remove local attempt state:",
+            storageError
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | EXIT FULLSCREEN
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+          if (
+            document.fullscreenElement
+          ) {
+            await document.exitFullscreen();
+          }
+        } catch (fullscreenError) {
+          console.warn(
+            "Unable to exit fullscreen:",
+            fullscreenError
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | RESULT PAGE
+        |--------------------------------------------------------------------------
+        */
+
+        router.replace(
+          `/test/${id}/result`
+        );
+      } catch (error) {
+        console.error(
+          "Submit test error:",
+          error
+        );
+
+        alert(
+          error?.message ||
+            "Unable to submit test. Please try again."
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    };
 
   /*
   |--------------------------------------------------------------------------
-  | Error Screen
+  | LOADING
+  |--------------------------------------------------------------------------
+  */
+
+  if (loading) {
+    return (
+      <SpiderManLoader
+        text="Loading Test..."
+      />
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | ERROR
   |--------------------------------------------------------------------------
   */
 
@@ -904,6 +1577,7 @@ export default function AttemptPage() {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-50 px-5">
         <div className="w-full max-w-[500px] rounded-xl border border-slate-200 bg-white px-8 py-7 text-center shadow-sm">
+
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-500">
             <AlertTriangle className="h-7 w-7" />
           </div>
@@ -916,6 +1590,18 @@ export default function AttemptPage() {
             {loadError ||
               "No questions were found for this test."}
           </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                `/test/${id}/instructions`
+              )
+            }
+            className="mt-6 rounded-lg bg-[#ef1118] px-7 py-3 text-sm font-bold text-white"
+          >
+            Go Back
+          </button>
         </div>
       </div>
     );
@@ -923,14 +1609,16 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Submitted Screen
+  | SUBMITTED SCREEN
   |--------------------------------------------------------------------------
   */
 
   if (submitted) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-[#f8fafc] px-5 font-sans">
+
         <div className="w-full max-w-[560px] rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600">
             <Check className="h-8 w-8" />
           </div>
@@ -943,37 +1631,6 @@ export default function AttemptPage() {
             Your test has been submitted successfully.
           </p>
 
-          <div className="mt-7 grid grid-cols-3 gap-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-xl font-bold text-slate-900">
-                {answeredCount}
-              </div>
-
-              <div className="mt-1 text-xs text-slate-500">
-                Answered
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-xl font-bold text-slate-900">
-                {markedCount}
-              </div>
-
-              <div className="mt-1 text-xs text-slate-500">
-                Review
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-xl font-bold text-slate-900">
-                {notVisitedCount}
-              </div>
-
-              <div className="mt-1 text-xs text-slate-500">
-                Not Visited
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     );
@@ -981,22 +1638,33 @@ export default function AttemptPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | MAIN TEST PLAYER
+  | QUESTION
+  |--------------------------------------------------------------------------
+  */
+
+  const question =
+    currentQuestionData;
+
+  /*
+  |--------------------------------------------------------------------------
+  | MAIN PLAYER
   |--------------------------------------------------------------------------
   */
 
   return (
     <div className="fixed inset-0 z-[100] flex h-screen h-[100dvh] w-screen flex-col overflow-hidden bg-[#f8fafc] font-sans">
+
       {/* ============================================================
           HEADER
       ============================================================ */}
 
       <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 shadow-[0_1px_3px_rgba(0,0,0,0.05)] lg:px-8">
-        {/* Test Name + Subject */}
 
         <div className="min-w-0">
           <div className="truncate text-[17px] font-extrabold tracking-[-0.5px] text-slate-800 lg:text-[20px]">
-            {test.title || "Test"}
+
+            {test.title ||
+              "Test"}
 
             <span className="mx-2 font-medium text-slate-300">
               |
@@ -1008,14 +1676,14 @@ export default function AttemptPage() {
           </div>
         </div>
 
-        {/* Timer + Mobile Palette */}
-
         <div className="flex items-center gap-3">
+
           <button
             type="button"
             onClick={() =>
               setMobilePalette(
-                (previous) => !previous
+                (previous) =>
+                  !previous
               )
             }
             className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 lg:hidden"
@@ -1024,6 +1692,7 @@ export default function AttemptPage() {
           </button>
 
           <div className="flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 font-bold text-blue-600">
+
             <Clock3 className="h-4 w-4" />
 
             <span className="text-sm tabular-nums">
@@ -1044,24 +1713,28 @@ export default function AttemptPage() {
       ============================================================ */}
 
       <main className="relative flex min-h-0 flex-1 overflow-hidden">
+
         {/* ==========================================================
-            LEFT QUESTION PANEL
+            LEFT PANEL
         =========================================================== */}
 
         <section className="flex min-w-0 flex-1 flex-col bg-white">
-          {/* Question header */}
+
+          {/* Question Header */}
 
           <div className="flex h-[70px] shrink-0 items-center gap-3 border-b border-slate-100 px-5 lg:px-10">
+
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-5 py-2 text-sm font-bold text-slate-600">
-              Question {currentQuestion}
+              Question{" "}
+              {currentQuestion}
             </div>
 
             <div className="rounded-md bg-green-50 px-2.5 py-1.5 text-sm font-bold text-green-600">
-              +{currentQuestionData.marks}
+              +{question.marks}
             </div>
 
             <div className="rounded-md bg-red-50 px-2.5 py-1.5 text-sm font-bold text-red-500">
-              -{currentQuestionData.negativeMarks}
+              -{question.negativeMarks}
             </div>
 
             <button
@@ -1073,31 +1746,27 @@ export default function AttemptPage() {
             </button>
           </div>
 
-          {/* ========================================================
-              QUESTION SCROLL AREA
-          ========================================================= */}
+          {/* Question Body */}
 
           <div
             ref={questionBodyRef}
             className="min-h-0 flex-1 overflow-y-auto"
           >
             <div className="px-5 py-6 lg:px-10 lg:py-7">
+
               <div className="mx-auto max-w-[1000px]">
-                {/* Question */}
 
                 <div className="mb-9 whitespace-pre-wrap text-[20px] font-normal leading-[1.7] text-slate-800 lg:text-[21px]">
-                  {
-                    currentQuestionData.questionText
-                  }
+                  {question.questionText}
                 </div>
 
-                {/* ==================================================
-                    Options
-                ================================================== */}
-
                 <div className="flex flex-col gap-4">
-                  {currentQuestionData.options.map(
-                    (option, index) => {
+
+                  {question.options?.map(
+                    (
+                      option,
+                      index
+                    ) => {
                       const selected =
                         currentState.selectedOption ===
                         index;
@@ -1110,7 +1779,7 @@ export default function AttemptPage() {
 
                       return (
                         <button
-                          key={`${currentQuestionData.id}-${option.id}`}
+                          key={`${question.id}-${option.id}`}
                           type="button"
                           onClick={() =>
                             handleOptionClick(
@@ -1123,6 +1792,7 @@ export default function AttemptPage() {
                               : "border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50 hover:shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]"
                           }`}
                         >
+
                           <span
                             className={`mr-5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border-2 text-sm font-bold ${
                               selected
@@ -1142,10 +1812,12 @@ export default function AttemptPage() {
                           >
                             {option.text}
                           </span>
+
                         </button>
                       );
                     }
                   )}
+
                 </div>
 
                 <div className="h-8" />
@@ -1153,15 +1825,9 @@ export default function AttemptPage() {
             </div>
           </div>
 
-          {/* ========================================================
-              LEFT QUESTION FOOTER
-
-              Prev / Next yahin hain.
-              Palette mein nahi.
-          ========================================================= */}
+          {/* LEFT FOOTER */}
 
           <div className="flex h-[80px] shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 shadow-[0_-1px_3px_rgba(0,0,0,0.02)] lg:px-10">
-            {/* Mark for Review */}
 
             <button
               type="button"
@@ -1177,24 +1843,30 @@ export default function AttemptPage() {
                 : "Mark for Review"}
             </button>
 
-            {/* Prev / Next */}
-
             <div className="flex items-center gap-2.5 lg:gap-3">
+
               <button
                 type="button"
-                onClick={previousQuestion}
+                onClick={
+                  previousQuestion
+                }
                 disabled={
-                  currentQuestion === 1
+                  currentQuestion ===
+                  1
                 }
                 className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" />
-                <span>Prev</span>
+                <span>
+                  Prev
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={nextQuestion}
+                onClick={
+                  nextQuestion
+                }
                 disabled={
                   currentQuestion ===
                   totalQuestions
@@ -1204,16 +1876,16 @@ export default function AttemptPage() {
                 Next
                 <ChevronRight className="h-4 w-4" />
               </button>
+
             </div>
           </div>
         </section>
 
         {/* ==========================================================
-            RIGHT QUESTION PALETTE
+            DESKTOP PALETTE
         =========================================================== */}
 
         <aside className="hidden w-[340px] shrink-0 flex-col border-l border-slate-200 bg-[#f8fafc] lg:flex">
-          {/* Palette heading */}
 
           <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-5">
             <div className="text-[17px] font-extrabold text-slate-800">
@@ -1221,17 +1893,16 @@ export default function AttemptPage() {
             </div>
           </div>
 
-          {/* ========================================================
-              STATUS LEGEND
-          ========================================================= */}
-
           <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-4 border-b border-slate-200 bg-white px-6 py-5">
-            {/* Answered */}
 
             <div className="flex items-center gap-2">
               <LegendIcon
-                type={STATUS.ANSWERED}
-                count={answeredCount}
+                type={
+                  STATUS.ANSWERED
+                }
+                count={
+                  answeredCount
+                }
               />
 
               <span className="text-xs font-semibold text-slate-600">
@@ -1239,12 +1910,14 @@ export default function AttemptPage() {
               </span>
             </div>
 
-            {/* Not Answered */}
-
             <div className="flex items-center gap-2">
               <LegendIcon
-                type={STATUS.NOT_ANSWERED}
-                count={notAnsweredCount}
+                type={
+                  STATUS.NOT_ANSWERED
+                }
+                count={
+                  notAnsweredCount
+                }
               />
 
               <span className="text-xs font-semibold text-slate-600">
@@ -1252,12 +1925,14 @@ export default function AttemptPage() {
               </span>
             </div>
 
-            {/* Not Visited */}
-
             <div className="flex items-center gap-2">
               <LegendIcon
-                type={STATUS.NOT_VISITED}
-                count={notVisitedCount}
+                type={
+                  STATUS.NOT_VISITED
+                }
+                count={
+                  notVisitedCount
+                }
               />
 
               <span className="text-xs font-semibold text-slate-600">
@@ -1265,12 +1940,14 @@ export default function AttemptPage() {
               </span>
             </div>
 
-            {/* Review Only */}
-
             <div className="flex items-center gap-2">
               <LegendIcon
-                type={STATUS.REVIEW}
-                count={reviewOnlyCount}
+                type={
+                  STATUS.REVIEW
+                }
+                count={
+                  reviewOnlyCount
+                }
               />
 
               <span className="text-xs font-semibold leading-4 text-slate-600">
@@ -1280,12 +1957,14 @@ export default function AttemptPage() {
               </span>
             </div>
 
-            {/* Answered + Review */}
-
             <div className="col-span-2 flex items-center gap-2">
               <LegendIcon
-                type={STATUS.ANSWERED_REVIEW}
-                count={answeredReviewCount}
+                type={
+                  STATUS.ANSWERED_REVIEW
+                }
+                count={
+                  answeredReviewCount
+                }
               />
 
               <span className="text-xs font-semibold leading-4 text-slate-600">
@@ -1296,28 +1975,27 @@ export default function AttemptPage() {
             </div>
           </div>
 
-          {/* ========================================================
-              QUESTION GRID
-
-              Only this part scrolls.
-              Submit stays fixed at bottom.
-          ========================================================= */}
-
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+
             <div className="grid grid-cols-5 gap-x-3 gap-y-4">
+
               {questions.map(
                 (_, index) => {
-                  const number = index + 1;
+                  const number =
+                    index + 1;
 
                   const item =
                     questionsState[
                       number
                     ] || {
-                      visited: false,
-                      selectedOption: null,
+                      visited:
+                        false,
+                      selectedOption:
+                        null,
                       markedForReview:
                         false,
-                      timeSpentSeconds: 0,
+                      timeSpentSeconds:
+                        0,
                     };
 
                   return (
@@ -1345,25 +2023,25 @@ export default function AttemptPage() {
                   );
                 }
               )}
+
             </div>
           </div>
 
-          {/* ========================================================
-              PALETTE SUBMIT FOOTER
-
-              Fixed at palette bottom.
-          ========================================================= */}
-
           <div className="shrink-0 border-t border-slate-200 bg-white p-4">
+
             <button
               type="button"
+              disabled={submitting}
               onClick={() =>
-                setShowSubmitModal(true)
+                setShowSubmitModal(
+                  true
+                )
               }
-              className="w-full rounded-md bg-gradient-to-r from-[#d41445] to-[#e3003f] px-5 py-3.5 text-sm font-extrabold tracking-wide text-white shadow-[0_4px_10px_rgba(212,20,69,0.2)] transition hover:brightness-95"
+              className="w-full rounded-md bg-gradient-to-r from-[#d41445] to-[#e3003f] px-5 py-3.5 text-sm font-extrabold tracking-wide text-white shadow-[0_4px_10px_rgba(212,20,69,0.2)] transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
               SUBMIT TEST
             </button>
+
           </div>
         </aside>
 
@@ -1377,15 +2055,17 @@ export default function AttemptPage() {
               type="button"
               aria-label="Close question palette"
               onClick={() =>
-                setMobilePalette(false)
+                setMobilePalette(
+                  false
+                )
               }
               className="fixed inset-0 z-[300] bg-slate-900/50 lg:hidden"
             />
 
             <aside className="fixed right-0 top-0 z-[301] flex h-full w-[320px] max-w-[88vw] flex-col bg-[#f8fafc] shadow-2xl lg:hidden">
-              {/* Mobile Heading */}
 
               <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
+
                 <div className="text-[17px] font-extrabold text-slate-800">
                   Question Palette
                 </div>
@@ -1401,17 +2081,20 @@ export default function AttemptPage() {
                 >
                   <X className="h-5 w-5" />
                 </button>
+
               </div>
 
-              {/* Mobile Legend */}
-
               <div className="grid shrink-0 grid-cols-2 gap-4 border-b border-slate-200 bg-white p-5">
+
                 <div className="flex items-center gap-2">
                   <LegendIcon
-                    type={STATUS.ANSWERED}
-                    count={answeredCount}
+                    type={
+                      STATUS.ANSWERED
+                    }
+                    count={
+                      answeredCount
+                    }
                   />
-
                   <span className="text-xs font-semibold text-slate-600">
                     Answered
                   </span>
@@ -1422,9 +2105,10 @@ export default function AttemptPage() {
                     type={
                       STATUS.NOT_ANSWERED
                     }
-                    count={notAnsweredCount}
+                    count={
+                      notAnsweredCount
+                    }
                   />
-
                   <span className="text-xs font-semibold text-slate-600">
                     Not Answered
                   </span>
@@ -1435,9 +2119,10 @@ export default function AttemptPage() {
                     type={
                       STATUS.NOT_VISITED
                     }
-                    count={notVisitedCount}
+                    count={
+                      notVisitedCount
+                    }
                   />
-
                   <span className="text-xs font-semibold text-slate-600">
                     Not Visited
                   </span>
@@ -1445,10 +2130,13 @@ export default function AttemptPage() {
 
                 <div className="flex items-center gap-2">
                   <LegendIcon
-                    type={STATUS.REVIEW}
-                    count={reviewOnlyCount}
+                    type={
+                      STATUS.REVIEW
+                    }
+                    count={
+                      reviewOnlyCount
+                    }
                   />
-
                   <span className="text-xs font-semibold text-slate-600">
                     Marked for Review
                   </span>
@@ -1463,17 +2151,17 @@ export default function AttemptPage() {
                       answeredReviewCount
                     }
                   />
-
                   <span className="text-xs font-semibold">
                     Answered & Marked for Review
                   </span>
                 </div>
+
               </div>
 
-              {/* Mobile Questions */}
-
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
+
                 <div className="grid grid-cols-5 gap-4">
+
                   {questions.map(
                     (_, index) => {
                       const number =
@@ -1483,12 +2171,14 @@ export default function AttemptPage() {
                         questionsState[
                           number
                         ] || {
-                          visited: false,
+                          visited:
+                            false,
                           selectedOption:
                             null,
                           markedForReview:
                             false,
-                          timeSpentSeconds: 0,
+                          timeSpentSeconds:
+                            0,
                         };
 
                       return (
@@ -1516,14 +2206,15 @@ export default function AttemptPage() {
                       );
                     }
                   )}
+
                 </div>
               </div>
 
-              {/* Mobile Submit */}
-
               <div className="shrink-0 border-t border-slate-200 bg-white p-4">
+
                 <button
                   type="button"
+                  disabled={submitting}
                   onClick={() => {
                     setMobilePalette(
                       false
@@ -1533,10 +2224,11 @@ export default function AttemptPage() {
                       true
                     );
                   }}
-                  className="w-full rounded-md bg-gradient-to-r from-[#d41445] to-[#e3003f] px-5 py-3.5 text-sm font-extrabold tracking-wide text-white shadow-[0_4px_10px_rgba(212,20,69,0.2)]"
+                  className="w-full rounded-md bg-gradient-to-r from-[#d41445] to-[#e3003f] px-5 py-3.5 text-sm font-extrabold tracking-wide text-white shadow-[0_4px_10px_rgba(212,20,69,0.2)] disabled:opacity-60"
                 >
                   SUBMIT TEST
                 </button>
+
               </div>
             </aside>
           </>
@@ -1546,148 +2238,176 @@ export default function AttemptPage() {
       {/* ============================================================
           SUBMIT MODAL
       ============================================================ */}
-{showSubmitModal && (
-  <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-md">
-    <div className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.25)]">
-      {/* Top accent */}
 
-      <div className="h-1.5 w-full bg-gradient-to-r from-[#ef1118] via-[#ff4350] to-[#ef1118]" />
+      {showSubmitModal && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-md">
 
-      <div className="p-7 sm:p-8">
-        {/* Icon */}
+          <div className="relative w-full max-w-[520px] overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.25)]">
 
-        <div className="flex justify-center">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-2xl bg-red-100 blur-xl" />
+            <div className="h-1.5 w-full bg-gradient-to-r from-[#ef1118] via-[#ff4350] to-[#ef1118]" />
 
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-[#ef1118] text-white shadow-lg shadow-red-200">
-              <Flag className="h-7 w-7" />
-            </div>
-          </div>
-        </div>
+            <div className="p-7 sm:p-8">
 
-        {/* Heading */}
+              <div className="flex justify-center">
 
-        <div className="mt-6 text-center">
-          <h2 className="text-2xl font-black tracking-tight text-slate-900">
-            Submit Your Test?
-          </h2>
+                <div className="relative">
 
-          <p className="mx-auto mt-2 max-w-[390px] text-sm leading-6 text-slate-500">
-            You're about to submit your test.
-            Please review your attempt before
-            continuing.
-          </p>
-        </div>
+                  <div className="absolute inset-0 rounded-2xl bg-red-100 blur-xl" />
 
-        {/* Stats */}
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-[#ef1118] text-white shadow-lg shadow-red-200">
+                    <Flag className="h-7 w-7" />
+                  </div>
 
-        <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-            <div className="text-xl font-black text-slate-900">
-              {answeredCount}
-            </div>
+                </div>
+              </div>
 
-            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-              Attempted
-            </div>
-          </div>
+              <div className="mt-6 text-center">
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-            <div className="text-xl font-black text-slate-900">
-              {notAnsweredCount}
-            </div>
+                <h2 className="text-2xl font-black tracking-tight text-slate-900">
+                  Submit Your Test?
+                </h2>
 
-            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-              Unanswered
-            </div>
-          </div>
+                <p className="mx-auto mt-2 max-w-[390px] text-sm leading-6 text-slate-500">
+                  You're about to submit your test.
+                  Please review your attempt before
+                  continuing.
+                </p>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-            <div className="text-xl font-black text-slate-900">
-              {markedCount}
-            </div>
+              </div>
 
-            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-              Review
-            </div>
-          </div>
+              <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-            <div className="text-xl font-black text-slate-900">
-              {isFixedTimer
-                ? formatTime(
-                    Math.max(
-                      Number(
-                        test?.duration_minutes ||
-                          0
-                      ) *
-                        60 -
-                        Number(
-                          remainingSeconds || 0
-                        ),
-                      0
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <div className="text-xl font-black text-slate-900">
+                    {answeredCount}
+                  </div>
+
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    Attempted
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <div className="text-xl font-black text-slate-900">
+                    {notAnsweredCount}
+                  </div>
+
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    Unanswered
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+                  <div className="text-xl font-black text-slate-900">
+                    {markedCount}
+                  </div>
+
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    Review
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+
+                  <div className="text-xl font-black text-slate-900">
+                    {isFixedTimer
+                      ? formatTime(
+                          Math.max(
+                            Number(
+                              test?.duration_minutes ||
+                                0
+                            ) *
+                              60 -
+                              Number(
+                                remainingSeconds ||
+                                  0
+                              ),
+                            0
+                          )
+                        )
+                      : formatTime(
+                          elapsedSeconds
+                        )}
+                  </div>
+
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                    Time
+                  </div>
+
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+
+                <div className="mt-0.5 shrink-0 text-amber-600">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+
+                <p className="text-xs font-medium leading-5 text-amber-800">
+                  Once you submit the test, you won't be
+                  able to change your answers.
+                </p>
+
+              </div>
+
+              <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowSubmitModal(
+                      false
                     )
-                  )
-                : formatTime(
-                    elapsedSeconds
+                  }
+                  disabled={
+                    autoSubmit ||
+                    submitting
+                  }
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Continue Test
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    submitTest
+                  }
+                  disabled={
+                    submitting
+                  }
+                  className="group flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#ef1118] px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-red-200 transition hover:-translate-y-0.5 hover:bg-[#d90e15] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      Yes, Submit Test
+                      <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </>
                   )}
-            </div>
 
-            <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-              Time
+                </button>
+
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Warning */}
-
-        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <div className="mt-0.5 shrink-0 text-amber-600">
-            <AlertTriangle className="h-5 w-5" />
-          </div>
-
-          <p className="text-xs font-medium leading-5 text-amber-800">
-            Once you submit the test, you won't be
-            able to change your answers.
-          </p>
-        </div>
-
-        {/* Actions */}
-
-        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={() =>
-              setShowSubmitModal(false)
-            }
-            disabled={autoSubmit}
-            className="flex-1 rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Continue Test
-          </button>
-
-          <button
-            type="button"
-            onClick={submitTest}
-            className="group flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#ef1118] px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-red-200 transition hover:-translate-y-0.5 hover:bg-[#d90e15]"
-          >
-            Yes, Submit Test
-
-            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
       {/* ============================================================
           FULLSCREEN WARNING
       ============================================================ */}
 
       {showFullscreenWarning && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/75 px-5 backdrop-blur-[4px]">
+
           <div className="w-full max-w-[480px] rounded-2xl border-t-[6px] border-red-500 bg-white p-8 text-center shadow-2xl">
+
             <div className="mb-5 flex justify-center">
               <AlertTriangle className="h-14 w-14 text-red-500" />
             </div>
@@ -1697,11 +2417,14 @@ export default function AttemptPage() {
             </div>
 
             <div className="mt-4 text-sm leading-6 text-slate-600">
+
               You have exited Full-Screen Mode.
               <br />
 
               <strong>
-                Warning {fullscreenWarnings} of 3.
+                Warning{" "}
+                {fullscreenWarnings}{" "}
+                of 3.
               </strong>
 
               <br />
@@ -1713,6 +2436,7 @@ export default function AttemptPage() {
                 automatically submitted
               </strong>
               .
+
             </div>
 
             <button
@@ -1728,9 +2452,11 @@ export default function AttemptPage() {
             >
               Return to Full Screen
             </button>
+
           </div>
         </div>
       )}
+
     </div>
   );
 }
