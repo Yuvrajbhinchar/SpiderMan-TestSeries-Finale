@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   AlertTriangle,
-  Check,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -40,25 +39,14 @@ function createQuestionState(total) {
 }
 
 function formatTime(seconds) {
-  const total = Math.max(
-    0,
-    Number(seconds) || 0
-  );
+  const total = Math.max(0, Number(seconds) || 0);
 
-  const hours = Math.floor(
-    total / 3600
-  );
-
-  const minutes = Math.floor(
-    (total % 3600) / 60
-  );
-
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
 
   return [hours, minutes, secs]
-    .map((value) =>
-      String(value).padStart(2, "0")
-    )
+    .map((value) => String(value).padStart(2, "0"))
     .join(":");
 }
 
@@ -67,10 +55,7 @@ function getStatus(item) {
     return STATUS.NOT_VISITED;
   }
 
-  if (
-    item.markedForReview &&
-    item.selectedOption !== null
-  ) {
+  if (item.markedForReview && item.selectedOption !== null) {
     return STATUS.ANSWERED_REVIEW;
   }
 
@@ -215,14 +200,233 @@ function LegendIcon({
   );
 }
 
+function normalizeTimerGroups(test) {
+  if (!test) return [];
+
+  const rawGroups = Array.isArray(test.timerGroups)
+    ? test.timerGroups
+    : Array.isArray(test.timer_groups)
+      ? test.timer_groups
+      : [];
+
+  if (rawGroups.length > 0) {
+    return rawGroups
+      .map((group, index) => ({
+        id:
+          group.id ??
+          group.timerGroup ??
+          group.timer_group ??
+          `group-${index + 1}`,
+        name:
+          group.name ||
+          group.timerGroup ||
+          group.timer_group ||
+          `Section ${index + 1}`,
+        order: Number(group.order ?? index + 1),
+        durationMinutes:
+          group.durationMinutes ??
+          group.duration_minutes ??
+          null,
+        sectionOrders: Array.isArray(group.sectionOrders)
+          ? group.sectionOrders.map(Number)
+          : Array.isArray(group.section_orders)
+            ? group.section_orders.map(Number)
+            : [],
+        sectionIds: Array.isArray(group.sectionIds)
+          ? group.sectionIds.map(Number)
+          : Array.isArray(group.section_ids)
+            ? group.section_ids.map(Number)
+            : [],
+      }))
+      .filter(
+        (group) =>
+          Number(group.durationMinutes) > 0
+      )
+      .sort((a, b) => a.order - b.order);
+  }
+
+  const sections = Array.isArray(test.sections)
+    ? test.sections
+    : [];
+
+  const grouped = new Map();
+
+  sections.forEach((section, index) => {
+    const duration =
+      section.durationMinutes ??
+      section.duration_minutes ??
+      null;
+
+    const timerGroup =
+      section.timerGroup ??
+      section.timer_group ??
+      section.id ??
+      index + 1;
+
+    if (Number(duration) <= 0) {
+      return;
+    }
+
+    const key = String(timerGroup);
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        id: timerGroup,
+        name: section.sectionName || section.section_name || `Section ${index + 1}`,
+        order: Number(
+          section.order ??
+            section.sectionOrder ??
+            section.section_order ??
+            index + 1
+        ),
+        durationMinutes: Number(duration),
+        sectionOrders: [],
+        sectionIds: [],
+      });
+    }
+
+    const current = grouped.get(key);
+
+    current.sectionOrders.push(
+      Number(
+        section.order ??
+          section.sectionOrder ??
+          section.section_order ??
+          index + 1
+      )
+    );
+
+    if (section.id != null) {
+      current.sectionIds.push(
+        Number(section.id)
+      );
+    }
+  });
+
+  return Array.from(grouped.values())
+    .sort((a, b) => a.order - b.order);
+}
+
+function buildRuntimeGroups(test, questions) {
+  const groups = normalizeTimerGroups(test);
+
+  if (groups.length === 0) {
+    return [];
+  }
+
+  const sections = Array.isArray(test?.sections)
+    ? test.sections
+    : [];
+
+  let cursor = 0;
+
+  const runtimeSections = sections.map(
+    (section, index) => {
+      const count = Math.max(
+        0,
+        Number(
+          section.questionCount ??
+            section.question_count ??
+            0
+        )
+      );
+
+      const start = cursor + 1;
+      const end = cursor + count;
+
+      cursor = end;
+
+      return {
+        id:
+          section.id ??
+          index + 1,
+        order: Number(
+          section.order ??
+            section.sectionOrder ??
+            section.section_order ??
+            index + 1
+        ),
+        name:
+          section.sectionName ||
+          section.section_name ||
+          `Section ${index + 1}`,
+        timerGroup:
+          section.timerGroup ??
+          section.timer_group ??
+          section.id ??
+          index + 1,
+        startQuestion: start,
+        endQuestion: end,
+      };
+    }
+  );
+
+  if (
+    runtimeSections.length > 0 &&
+    cursor !== questions.length
+  ) {
+    runtimeSections[runtimeSections.length - 1].endQuestion =
+      questions.length;
+  }
+
+  return groups.map((group, index) => {
+    const groupSections =
+      runtimeSections.filter((section) => {
+        if (
+          group.sectionIds.length > 0 &&
+          group.sectionIds.includes(
+            Number(section.id)
+          )
+        ) {
+          return true;
+        }
+
+        if (
+          group.sectionOrders.length > 0 &&
+          group.sectionOrders.includes(
+            Number(section.order)
+          )
+        ) {
+          return true;
+        }
+
+        return String(section.timerGroup) ===
+          String(group.id);
+      });
+
+    const firstSection =
+      groupSections[0] || null;
+
+    const lastSection =
+      groupSections[groupSections.length - 1] ||
+      null;
+
+    return {
+      ...group,
+      index,
+      startQuestion:
+        firstSection?.startQuestion || 1,
+      endQuestion:
+        lastSection?.endQuestion ||
+        firstSection?.endQuestion ||
+        questions.length,
+    };
+  });
+}
+
 export default function AttemptPage() {
   const { id } = useParams();
   const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] =
+    useState(true);
 
-  const [test, setTest] = useState(null);
+  const [loadError, setLoadError] =
+    useState("");
+
+  const [test, setTest] =
+    useState(null);
+
   const [attempt, setAttempt] =
     useState(null);
 
@@ -241,8 +445,15 @@ export default function AttemptPage() {
   const [elapsedSeconds, setElapsedSeconds] =
     useState(0);
 
-  const [showSubmitModal, setShowSubmitModal] =
-    useState(false);
+  const [
+    activeTimerGroupIndex,
+    setActiveTimerGroupIndex,
+  ] = useState(0);
+
+  const [
+    showSubmitModal,
+    setShowSubmitModal,
+  ] = useState(false);
 
   const [submitting, setSubmitting] =
     useState(false);
@@ -250,8 +461,10 @@ export default function AttemptPage() {
   const [mobilePalette, setMobilePalette] =
     useState(false);
 
-  const [fullscreenWarnings, setFullscreenWarnings] =
-    useState(0);
+  const [
+    fullscreenWarnings,
+    setFullscreenWarnings,
+  ] = useState(0);
 
   const [
     showFullscreenWarning,
@@ -272,6 +485,12 @@ export default function AttemptPage() {
   const checkpointInProgress =
     useRef(false);
 
+  const submittedRef =
+    useRef(false);
+
+  const expiredGroupsRef =
+    useRef(-1);
+
   /*
   |--------------------------------------------------------------------------
   | Refs
@@ -284,7 +503,8 @@ export default function AttemptPage() {
   }, [questionsState]);
 
   useEffect(() => {
-    attemptRef.current = attempt;
+    attemptRef.current =
+      attempt;
   }, [attempt]);
 
   /*
@@ -359,27 +579,21 @@ export default function AttemptPage() {
             const attemptData =
               await attemptResponse.json();
 
-            if (
-              !instructionsResponse.ok
-            ) {
+            if (!instructionsResponse.ok) {
               throw new Error(
                 instructionsData.error ||
                   "Unable to load test."
               );
             }
 
-            if (
-              !questionsResponse.ok
-            ) {
+            if (!questionsResponse.ok) {
               throw new Error(
                 questionsData.error ||
                   "Unable to load questions."
               );
             }
 
-            if (
-              !attemptResponse.ok
-            ) {
+            if (!attemptResponse.ok) {
               throw new Error(
                 attemptData.error ||
                   "Unable to start test."
@@ -398,13 +612,11 @@ export default function AttemptPage() {
             const loadedAttempt =
               attemptData.attempt;
 
-            setTest(
-              instructionsData.test
-            );
+            const loadedTest =
+              instructionsData.test;
 
-            setAttempt(
-              loadedAttempt
-            );
+            setTest(loadedTest);
+            setAttempt(loadedAttempt);
 
             attemptRef.current =
               loadedAttempt;
@@ -415,7 +627,7 @@ export default function AttemptPage() {
 
             /*
             |--------------------------------------------------------------------------
-            | Restore state
+            | Restore question state
             |--------------------------------------------------------------------------
             */
 
@@ -473,14 +685,17 @@ export default function AttemptPage() {
                       Boolean(
                         saved.visited
                       ),
+
                     selectedOption:
                       selectedIndex >= 0
                         ? selectedIndex
                         : null,
+
                     markedForReview:
                       Boolean(
                         saved.markedForReview
                       ),
+
                     timeSpentSeconds:
                       Number(
                         saved.timeSpentSeconds ||
@@ -550,56 +765,23 @@ export default function AttemptPage() {
 
             const isDpp =
               Boolean(
-                instructionsData.test
-                  ?.is_dpp
+                loadedTest?.is_dpp
               );
 
-            if (!isDpp) {
-              const duration =
-                Number(
-                  instructionsData
-                    .test
-                    ?.duration_minutes ||
-                    0
-                );
-
-              const startedAt =
-                new Date(
-                  loadedAttempt.startedAt
-                ).getTime();
-
-              const elapsed =
-                Math.max(
-                  0,
-                  Math.floor(
-                    (Date.now() -
-                      startedAt) /
-                      1000
-                  )
-                );
-
-              const totalSeconds =
-                duration * 60;
-
-              setRemainingSeconds(
-                Math.max(
-                  totalSeconds -
-                    elapsed,
-                  0
-                )
+            const runtimeGroups =
+              buildRuntimeGroups(
+                loadedTest,
+                loadedQuestions
               );
 
-              setElapsedSeconds(
-                elapsed
-              );
-            } else {
+            const sectionalMode =
+              !isDpp &&
+              runtimeGroups.length > 0;
+
+            if (isDpp) {
               const savedTotal =
-                Array.from(
+                Object.values(
                   restoredState
-                    ? Object.values(
-                        restoredState
-                      )
-                    : []
                 ).reduce(
                   (
                     total,
@@ -616,9 +798,136 @@ export default function AttemptPage() {
               setElapsedSeconds(
                 savedTotal
               );
-            }
 
-            setCurrentQuestion(1);
+              setRemainingSeconds(0);
+              setActiveTimerGroupIndex(0);
+              expiredGroupsRef.current = -1;
+
+              setCurrentQuestion(1);
+            } else {
+              const startedAt =
+                new Date(
+                  loadedAttempt.startedAt
+                ).getTime();
+
+              const elapsed =
+                Math.max(
+                  0,
+                  Math.floor(
+                    (Date.now() -
+                      startedAt) /
+                      1000
+                  )
+                );
+
+              setElapsedSeconds(
+                elapsed
+              );
+
+              if (sectionalMode) {
+                let elapsedCursor = elapsed;
+                let foundGroup = 0;
+                let foundRemaining = 0;
+                let expiredAll = true;
+
+                for (
+                  let index = 0;
+                  index <
+                  runtimeGroups.length;
+                  index += 1
+                ) {
+                  const duration =
+                    Number(
+                      runtimeGroups[index]
+                        .durationMinutes ||
+                        0
+                    ) * 60;
+
+                  if (
+                    elapsedCursor <
+                    duration
+                  ) {
+                    foundGroup = index;
+                    foundRemaining =
+                      duration -
+                      elapsedCursor;
+                    expiredAll = false;
+                    break;
+                  }
+
+                  elapsedCursor -= duration;
+                }
+
+                if (expiredAll) {
+                  foundGroup =
+                    Math.max(
+                      runtimeGroups.length - 1,
+                      0
+                    );
+
+                  foundRemaining = 0;
+                }
+
+                setActiveTimerGroupIndex(
+                  foundGroup
+                );
+
+                expiredGroupsRef.current =
+                  foundGroup;
+
+                setRemainingSeconds(
+                  foundRemaining
+                );
+
+                const targetQuestion =
+                  runtimeGroups[
+                    foundGroup
+                  ]?.startQuestion || 1;
+
+                setCurrentQuestion(
+                  Math.min(
+                    Math.max(
+                      targetQuestion,
+                      1
+                    ),
+                    loadedQuestions.length
+                  )
+                );
+
+                if (expiredAll) {
+                  setShowSubmitModal(true);
+                }
+              } else {
+                const duration =
+                  Number(
+                    loadedTest?.duration_minutes ||
+                      0
+                  ) * 60;
+
+                setRemainingSeconds(
+                  Math.max(
+                    duration - elapsed,
+                    0
+                  )
+                );
+
+                setActiveTimerGroupIndex(
+                  0
+                );
+
+                expiredGroupsRef.current =
+                  -1;
+
+                setCurrentQuestion(1);
+
+                if (
+                  duration > 0 &&
+                  elapsed >= duration
+                ) {
+                  setShowSubmitModal(true);
+                }
+              }
+            }
           } catch (error) {
             console.error(
               "Attempt page error:",
@@ -663,11 +972,31 @@ export default function AttemptPage() {
   const isDpp =
     Boolean(test?.is_dpp);
 
+  const runtimeTimerGroups =
+    useMemo(
+      () =>
+        buildRuntimeGroups(
+          test,
+          questions
+        ),
+      [test, questions]
+    );
+
+  const isSectionalTimer =
+    !isDpp &&
+    runtimeTimerGroups.length > 0;
+
   const isFixedTimer =
     !isDpp &&
+    !isSectionalTimer &&
     Number(
       test?.duration_minutes || 0
     ) > 0;
+
+  const currentTimerGroup =
+    runtimeTimerGroups[
+      activeTimerGroupIndex
+    ] || null;
 
   const currentQuestionData =
     questions[
@@ -683,6 +1012,55 @@ export default function AttemptPage() {
       markedForReview: false,
       timeSpentSeconds: 0,
     };
+
+  /*
+  |--------------------------------------------------------------------------
+  | Current group navigation helpers
+  |--------------------------------------------------------------------------
+  */
+
+  const getQuestionGroupIndex = (
+    number
+  ) => {
+    if (
+      !isSectionalTimer ||
+      runtimeTimerGroups.length === 0
+    ) {
+      return 0;
+    }
+
+    const index =
+      runtimeTimerGroups.findIndex(
+        (group) =>
+          number >=
+            Number(
+              group.startQuestion
+            ) &&
+          number <=
+            Number(
+              group.endQuestion
+            )
+      );
+
+    return index >= 0
+      ? index
+      : 0;
+  };
+
+  const isQuestionAllowed = (
+    number
+  ) => {
+    if (!isSectionalTimer) {
+      return true;
+    }
+
+    return (
+      getQuestionGroupIndex(
+        number
+      ) ===
+      activeTimerGroupIndex
+    );
+  };
 
   /*
   |--------------------------------------------------------------------------
@@ -723,125 +1101,133 @@ export default function AttemptPage() {
   |--------------------------------------------------------------------------
   */
 
-  const saveCheckpoint = async () => {
-    if (
-      checkpointInProgress.current ||
-      !attemptRef.current?.id ||
-      questions.length === 0
-    ) {
-      return false;
-    }
-
-    checkpointInProgress.current =
-      true;
-
-    try {
-      const user =
-        auth.currentUser;
-
-      if (!user) {
+  const saveCheckpoint =
+    async () => {
+      if (
+        checkpointInProgress.current ||
+        !attemptRef.current?.id ||
+        questions.length === 0 ||
+        submittedRef.current
+      ) {
         return false;
       }
 
-      const token =
-        await user.getIdToken();
-
-      const currentState =
-        questionsStateRef.current;
-
-      const answers =
-        questions.map(
-          (question, index) => {
-            const number = index + 1;
-
-            const state =
-              currentState[
-                number
-              ] || {
-                visited: false,
-                selectedOption:
-                  null,
-                markedForReview:
-                  false,
-                timeSpentSeconds:
-                  0,
-              };
-
-            const selectedOption =
-              state.selectedOption !==
-              null
-                ? question.options?.[
-                    state
-                      .selectedOption
-                  ] || null
-                : null;
-
-            return {
-              questionId:
-                question.id,
-
-              selectedOptionId:
-                selectedOption?.id ??
-                null,
-
-              visited:
-                Boolean(
-                  state.visited
-                ),
-
-              markedForReview:
-                Boolean(
-                  state.markedForReview
-                ),
-
-              timeSpentSeconds:
-                Math.max(
-                  0,
-                  Math.floor(
-                    Number(
-                      state.timeSpentSeconds ||
-                        0
-                    )
-                  )
-                ),
-            };
-          }
-        );
-
-      const response =
-        await fetch(
-          `/api/test/${id}/checkpoint`,
-          {
-            method: "POST",
-            headers: {
-              Authorization:
-                `Bearer ${token}`,
-              "Content-Type":
-                "application/json",
-            },
-            body: JSON.stringify({
-              attemptId:
-                attemptRef.current
-                  .id,
-              answers,
-            }),
-            keepalive: true,
-          }
-        );
-
-      return response.ok;
-    } catch (error) {
-      console.error(
-        "Checkpoint failed:",
-        error
-      );
-
-      return false;
-    } finally {
       checkpointInProgress.current =
-        false;
-    }
-  };
+        true;
+
+      try {
+        const user =
+          auth.currentUser;
+
+        if (!user) {
+          return false;
+        }
+
+        const token =
+          await user.getIdToken();
+
+        const currentState =
+          questionsStateRef.current;
+
+        const answers =
+          questions.map(
+            (
+              question,
+              index
+            ) => {
+              const number =
+                index + 1;
+
+              const state =
+                currentState[
+                  number
+                ] || {
+                  visited: false,
+                  selectedOption:
+                    null,
+                  markedForReview:
+                    false,
+                  timeSpentSeconds:
+                    0,
+                };
+
+              const selectedOption =
+                state.selectedOption !==
+                null
+                  ? question.options?.[
+                      state
+                        .selectedOption
+                    ] || null
+                  : null;
+
+              return {
+                questionId:
+                  question.id,
+
+                selectedOptionId:
+                  selectedOption?.id ??
+                  null,
+
+                visited:
+                  Boolean(
+                    state.visited
+                  ),
+
+                markedForReview:
+                  Boolean(
+                    state.markedForReview
+                  ),
+
+                timeSpentSeconds:
+                  Math.max(
+                    0,
+                    Math.floor(
+                      Number(
+                        state.timeSpentSeconds ||
+                          0
+                      )
+                    )
+                  ),
+              };
+            }
+          );
+
+        const response =
+          await fetch(
+            `/api/test/${id}/checkpoint`,
+            {
+              method: "POST",
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+                "Content-Type":
+                  "application/json",
+              },
+
+              body: JSON.stringify({
+                attemptId:
+                  attemptRef.current
+                    .id,
+                answers,
+              }),
+
+              keepalive: true,
+            }
+          );
+
+        return response.ok;
+      } catch (error) {
+        console.error(
+          "Checkpoint failed:",
+          error
+        );
+
+        return false;
+      } finally {
+        checkpointInProgress.current =
+          false;
+      }
+    };
 
   /*
   |--------------------------------------------------------------------------
@@ -853,7 +1239,7 @@ export default function AttemptPage() {
     if (
       loading ||
       totalQuestions === 0 ||
-      submittedState()
+      submittedRef.current
     ) {
       return;
     }
@@ -874,65 +1260,224 @@ export default function AttemptPage() {
     questions,
   ]);
 
-  function submittedState() {
-    return false;
-  }
-
   /*
   |--------------------------------------------------------------------------
-  | Overall timer
+  | Timer
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
     if (
       loading ||
-      totalQuestions === 0
+      totalQuestions === 0 ||
+      submittedRef.current
     ) {
       return;
     }
 
-    const timer =
-      window.setInterval(() => {
-        if (isFixedTimer) {
-          setRemainingSeconds(
-            (previous) => {
-              if (previous <= 1) {
-                window.clearInterval(
-                  timer
-                );
+    /*
+    |--------------------------------------------------------------------------
+    | DPP
+    |--------------------------------------------------------------------------
+    */
 
-                setRemainingSeconds(
-                  0
-                );
+    if (isDpp) {
+      return;
+    }
 
-                setShowSubmitModal(
-                  true
-                );
+    /*
+    |--------------------------------------------------------------------------
+    | Sectional timer
+    |--------------------------------------------------------------------------
+    */
 
-                return 0;
-              }
+    if (isSectionalTimer) {
+      const timer =
+        window.setInterval(() => {
+          const startedAt =
+            new Date(
+              attemptRef.current?.startedAt
+            ).getTime();
 
-              return previous - 1;
-            }
-          );
-        } else {
+          if (!startedAt) return;
+
+          const totalElapsed =
+            Math.max(
+              0,
+              Math.floor(
+                (Date.now() -
+                  startedAt) /
+                  1000
+              )
+            );
+
           setElapsedSeconds(
-            (previous) =>
-              previous + 1
+            totalElapsed
           );
-        }
-      }, 1000);
 
-    return () => {
-      window.clearInterval(
-        timer
-      );
-    };
+          let cursor =
+            totalElapsed;
+
+          let groupIndex =
+            runtimeTimerGroups.length - 1;
+
+          let remaining = 0;
+
+          let foundActive =
+            false;
+
+          for (
+            let index = 0;
+            index <
+            runtimeTimerGroups.length;
+            index += 1
+          ) {
+            const duration =
+              Number(
+                runtimeTimerGroups[
+                  index
+                ]?.durationMinutes ||
+                  0
+              ) * 60;
+
+            if (cursor < duration) {
+              groupIndex = index;
+              remaining =
+                duration - cursor;
+              foundActive = true;
+              break;
+            }
+
+            cursor -= duration;
+          }
+
+          if (!foundActive) {
+            remaining = 0;
+          }
+
+          setActiveTimerGroupIndex(
+            groupIndex
+          );
+
+          setRemainingSeconds(
+            remaining
+          );
+
+          if (
+            groupIndex !==
+            expiredGroupsRef.current
+          ) {
+            expiredGroupsRef.current =
+              groupIndex;
+
+            const targetQuestion =
+              runtimeTimerGroups[
+                groupIndex
+              ]?.startQuestion || 1;
+
+            setCurrentQuestion(
+              Math.min(
+                Math.max(
+                  targetQuestion,
+                  1
+                ),
+                totalQuestions
+              )
+            );
+
+            setMobilePalette(false);
+
+            if (
+              questionBodyRef
+            ) {
+              questionBodyRef.scrollTop = 0;
+            }
+
+            saveCheckpoint();
+          }
+
+          if (!foundActive) {
+            setShowSubmitModal(
+              true
+            );
+          }
+        }, 1000);
+
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Normal full-test timer
+    |--------------------------------------------------------------------------
+    */
+
+    if (isFixedTimer) {
+      const timer =
+        window.setInterval(() => {
+          const startedAt =
+            new Date(
+              attemptRef.current?.startedAt
+            ).getTime();
+
+          if (!startedAt) return;
+
+          const duration =
+            Number(
+              test?.duration_minutes ||
+                0
+            ) * 60;
+
+          const elapsed =
+            Math.max(
+              0,
+              Math.floor(
+                (Date.now() -
+                  startedAt) /
+                  1000
+              )
+            );
+
+          const remaining =
+            Math.max(
+              duration - elapsed,
+              0
+            );
+
+          setElapsedSeconds(
+            elapsed
+          );
+
+          setRemainingSeconds(
+            remaining
+          );
+
+          if (remaining <= 0) {
+            setShowSubmitModal(
+              true
+            );
+          }
+        }, 1000);
+
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    }
   }, [
     loading,
+    isDpp,
+    isSectionalTimer,
     isFixedTimer,
     totalQuestions,
+    runtimeTimerGroups,
+    test?.duration_minutes,
+    questionBodyRef,
   ]);
 
   /*
@@ -944,7 +1489,8 @@ export default function AttemptPage() {
   useEffect(() => {
     if (
       loading ||
-      totalQuestions === 0
+      totalQuestions === 0 ||
+      submittedRef.current
     ) {
       return;
     }
@@ -982,6 +1528,13 @@ export default function AttemptPage() {
             return nextState;
           }
         );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Only DPP uses question-time as total elapsed time.
+        | Other test timers are derived from startedAt.
+        |--------------------------------------------------------------------------
+        */
 
         if (isDpp) {
           setElapsedSeconds(
@@ -1086,6 +1639,12 @@ export default function AttemptPage() {
       return;
     }
 
+    if (
+      !isQuestionAllowed(number)
+    ) {
+      return;
+    }
+
     const nextState = {
       ...questionsStateRef.current,
 
@@ -1116,30 +1675,59 @@ export default function AttemptPage() {
     );
 
     setCurrentQuestion(number);
+
     setMobilePalette(false);
+
+    if (questionBodyRef) {
+      questionBodyRef.scrollTop = 0;
+    }
   };
 
   const nextQuestion =
     () => {
       if (
-        currentQuestion <
+        currentQuestion >=
         totalQuestions
       ) {
-        goToQuestion(
-          currentQuestion + 1
-        );
+        return;
       }
+
+      const next =
+        currentQuestion + 1;
+
+      if (
+        !isQuestionAllowed(
+          next
+        )
+      ) {
+        return;
+      }
+
+      goToQuestion(next);
     };
 
   const previousQuestion =
     () => {
       if (
-        currentQuestion > 1
+        currentQuestion <= 1
       ) {
-        goToQuestion(
-          currentQuestion - 1
-        );
+        return;
       }
+
+      const previous =
+        currentQuestion - 1;
+
+      if (
+        !isQuestionAllowed(
+          previous
+        )
+      ) {
+        return;
+      }
+
+      goToQuestion(
+        previous
+      );
     };
 
   /*
@@ -1318,6 +1906,7 @@ export default function AttemptPage() {
     async () => {
       if (
         submitting ||
+        submittedRef.current ||
         !attemptRef.current?.id
       ) {
         return;
@@ -1325,12 +1914,6 @@ export default function AttemptPage() {
 
       try {
         setSubmitting(true);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Final checkpoint
-        |--------------------------------------------------------------------------
-        */
 
         await saveCheckpoint();
 
@@ -1351,8 +1934,12 @@ export default function AttemptPage() {
 
         const answers =
           questions.map(
-            (question, index) => {
-              const number = index + 1;
+            (
+              question,
+              index
+            ) => {
+              const number =
+                index + 1;
 
               const state =
                 currentState[
@@ -1406,6 +1993,7 @@ export default function AttemptPage() {
                 "Content-Type":
                   "application/json",
               },
+
               body: JSON.stringify({
                 attemptId:
                   attemptRef.current
@@ -1425,11 +2013,8 @@ export default function AttemptPage() {
           );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Store result for result page
-        |--------------------------------------------------------------------------
-        */
+        submittedRef.current =
+          true;
 
         sessionStorage.setItem(
           `spiderman_test_result_${id}`,
@@ -1445,21 +2030,9 @@ export default function AttemptPage() {
           )
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Remove active local backup
-        |--------------------------------------------------------------------------
-        */
-
         localStorage.removeItem(
           `spiderman_attempt_${attemptRef.current.id}`
         );
-
-        /*
-        |--------------------------------------------------------------------------
-        | Exit fullscreen
-        |--------------------------------------------------------------------------
-        */
 
         try {
           if (
@@ -1471,7 +2044,9 @@ export default function AttemptPage() {
           // Ignore fullscreen exit error.
         }
 
-        setShowSubmitModal(false);
+        setShowSubmitModal(
+          false
+        );
 
         router.replace(
           `/test/${id}/result`
@@ -1549,6 +2124,29 @@ export default function AttemptPage() {
     );
   }
 
+  const headerTime =
+    isSectionalTimer
+      ? remainingSeconds
+      : isFixedTimer
+        ? remainingSeconds
+        : elapsedSeconds;
+
+  const submitModalTime =
+    isSectionalTimer
+      ? elapsedSeconds
+      : isFixedTimer
+        ? Math.max(
+            Number(
+              test.duration_minutes || 0
+            ) *
+              60 -
+              Number(
+                remainingSeconds || 0
+              ),
+            0
+          )
+        : elapsedSeconds;
+
   /*
   |--------------------------------------------------------------------------
   | MAIN
@@ -1593,13 +2191,9 @@ export default function AttemptPage() {
             <Clock3 className="h-4 w-4" />
 
             <span className="text-sm tabular-nums">
-              {isFixedTimer
-                ? formatTime(
-                    remainingSeconds
-                  )
-                : formatTime(
-                    elapsedSeconds
-                  )}
+              {formatTime(
+                headerTime
+              )}
             </span>
           </div>
         </div>
@@ -1745,7 +2339,13 @@ export default function AttemptPage() {
                 }
                 disabled={
                   currentQuestion ===
-                  1
+                  1 ||
+                  (
+                    isSectionalTimer &&
+                    !isQuestionAllowed(
+                      currentQuestion - 1
+                    )
+                  )
                 }
                 className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1760,7 +2360,13 @@ export default function AttemptPage() {
                   onClick={
                     nextQuestion
                   }
-                  className="flex items-center gap-2 rounded-lg bg-[#2563eb] px-7 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(37,99,235,0.2)] transition hover:bg-blue-700"
+                  disabled={
+                    isSectionalTimer &&
+                    !isQuestionAllowed(
+                      currentQuestion + 1
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-lg bg-[#2563eb] px-7 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(37,99,235,0.2)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Next
                   <ChevronRight className="h-4 w-4" />
@@ -1890,6 +2496,11 @@ export default function AttemptPage() {
                         0,
                     };
 
+                  const allowed =
+                    isQuestionAllowed(
+                      number
+                    );
+
                   return (
                     <button
                       key={
@@ -1901,7 +2512,14 @@ export default function AttemptPage() {
                           number
                         )
                       }
-                      className="flex items-center justify-center"
+                      disabled={
+                        !allowed
+                      }
+                      className={`flex items-center justify-center ${
+                        !allowed
+                          ? "cursor-not-allowed opacity-35"
+                          : ""
+                      }`}
                     >
                       <PaletteIcon
                         status={getStatus(
@@ -2053,6 +2671,11 @@ export default function AttemptPage() {
                             false,
                         };
 
+                      const allowed =
+                        isQuestionAllowed(
+                          number
+                        );
+
                       return (
                         <button
                           key={
@@ -2064,7 +2687,14 @@ export default function AttemptPage() {
                               number
                             )
                           }
-                          className="flex items-center justify-center"
+                          disabled={
+                            !allowed
+                          }
+                          className={`flex items-center justify-center ${
+                            !allowed
+                              ? "cursor-not-allowed opacity-35"
+                              : ""
+                          }`}
                         >
                           <PaletteIcon
                             status={getStatus(
@@ -2172,24 +2802,11 @@ export default function AttemptPage() {
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
                   <div className="text-lg font-black text-slate-900">
-                    {isFixedTimer
-                      ? formatTime(
-                          Math.max(
-                            Number(
-                              test.duration_minutes ||
-                                0
-                            ) *
-                              60 -
-                              Number(
-                                remainingSeconds ||
-                                  0
-                              ),
-                            0
-                          )
-                        )
-                      : formatTime(
-                          elapsedSeconds
-                        )}
+                    {
+                      formatTime(
+                        submitModalTime
+                      )
+                    }
                   </div>
 
                   <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
@@ -2264,6 +2881,7 @@ export default function AttemptPage() {
             <div className="mt-4 text-sm leading-6 text-slate-600">
               You have exited Full-Screen Mode.
               <br />
+
               <strong>
                 Warning{" "}
                 {
@@ -2291,4 +2909,4 @@ export default function AttemptPage() {
       )}
     </div>
   );
-}
+} 

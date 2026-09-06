@@ -14,8 +14,11 @@ export async function POST(request, { params }) {
       );
     }
 
-    const authHeader =
-      request.headers.get("authorization");
+    // ------------------------------------------------------------
+    // Auth
+    // ------------------------------------------------------------
+
+    const authHeader = request.headers.get("authorization");
 
     if (!authHeader?.startsWith("Bearer ")) {
       return NextResponse.json(
@@ -25,9 +28,11 @@ export async function POST(request, { params }) {
     }
 
     const token = authHeader.slice(7);
+    const decoded = await getAuth().verifyIdToken(token);
 
-    const decoded =
-      await getAuth().verifyIdToken(token);
+    // ------------------------------------------------------------
+    // User
+    // ------------------------------------------------------------
 
     const userResult = await db.execute({
       sql: `
@@ -48,11 +53,13 @@ export async function POST(request, { params }) {
 
     const userId = Number(userResult.rows[0].id);
 
+    // ------------------------------------------------------------
+    // Body
+    // ------------------------------------------------------------
+
     const body = await request.json();
 
-    const attemptId = Number(
-      body?.attemptId || 0
-    );
+    const attemptId = Number(body?.attemptId || 0);
 
     const answers = Array.isArray(body?.answers)
       ? body.answers
@@ -65,11 +72,9 @@ export async function POST(request, { params }) {
       );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Attempt
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Attempt
+    // ------------------------------------------------------------
 
     const attemptResult = await db.execute({
       sql: `
@@ -95,24 +100,20 @@ export async function POST(request, { params }) {
       );
     }
 
-    const attempt =
-      attemptResult.rows[0];
+    const attempt = attemptResult.rows[0];
 
     if (attempt.status !== "in_progress") {
       return NextResponse.json(
         {
-          error:
-            "This attempt has already been submitted.",
+          error: "This attempt has already been submitted.",
         },
         { status: 400 }
       );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Questions + correct options
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Questions
+    // ------------------------------------------------------------
 
     const questionsResult = await db.execute({
       sql: `
@@ -127,53 +128,63 @@ export async function POST(request, { params }) {
       args: [testId],
     });
 
-    const correctOptionsResult =
-      await db.execute({
-        sql: `
-          SELECT
-            qo.question_id,
-            qo.id AS option_id
-          FROM question_options qo
-          INNER JOIN questions q
-            ON q.id = qo.question_id
-          WHERE q.test_id = ?
-            AND qo.is_correct = 1
-        `,
-        args: [testId],
-      });
-
     const questionMap = new Map();
 
     for (const row of questionsResult.rows) {
       questionMap.set(Number(row.id), {
         marks: Number(row.marks || 0),
-        negativeMarks: Number(
-          row.negative_marks || 0
-        ),
+        negativeMarks: Number(row.negative_marks || 0),
       });
     }
 
+    // ------------------------------------------------------------
+    // Correct options + all valid options
+    //
+    // One query instead of validating every answer separately.
+    // ------------------------------------------------------------
+
+    const optionsResult = await db.execute({
+      sql: `
+        SELECT
+          qo.question_id,
+          qo.id AS option_id,
+          qo.is_correct
+        FROM question_options qo
+        INNER JOIN questions q
+          ON q.id = qo.question_id
+        WHERE q.test_id = ?
+      `,
+      args: [testId],
+    });
+
     const correctOptionMap = new Map();
 
-    for (const row of correctOptionsResult.rows) {
-      correctOptionMap.set(
-        Number(row.question_id),
-        Number(row.option_id)
-      );
+    // questionId -> Set(optionId)
+    const validOptionsMap = new Map();
+
+    for (const row of optionsResult.rows) {
+      const questionId = Number(row.question_id);
+      const optionId = Number(row.option_id);
+
+      if (!validOptionsMap.has(questionId)) {
+        validOptionsMap.set(questionId, new Set());
+      }
+
+      validOptionsMap.get(questionId).add(optionId);
+
+      if (Number(row.is_correct) === 1) {
+        correctOptionMap.set(questionId, optionId);
+      }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate client answers
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Normalize + validate client answers
+    // ------------------------------------------------------------
 
     const submittedMap = new Map();
 
     for (const item of answers) {
-      const questionId = Number(
-        item?.questionId || 0
-      );
+      const questionId = Number(item?.questionId || 0);
 
       if (!questionMap.has(questionId)) {
         continue;
@@ -188,12 +199,23 @@ export async function POST(request, { params }) {
 
       const timeSpentSeconds = Math.max(
         0,
-        Math.floor(
-          Number(
-            item?.timeSpentSeconds || 0
-          )
-        )
+        Math.floor(Number(item?.timeSpentSeconds || 0))
       );
+
+      // Validate option locally using the options fetched above.
+      if (selectedOptionId !== null) {
+        const validOptions =
+          validOptionsMap.get(questionId);
+
+        if (!validOptions?.has(selectedOptionId)) {
+          return NextResponse.json(
+            {
+              error: "Invalid answer data received.",
+            },
+            { status: 400 }
+          );
+        }
+      }
 
       submittedMap.set(questionId, {
         selectedOptionId,
@@ -201,52 +223,38 @@ export async function POST(request, { params }) {
       });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate selected option belongs to question
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Get existing checkpoint flags
+    //
+    // One query instead of one query per question.
+    // ------------------------------------------------------------
 
-    for (const [
-      questionId,
-      answer,
-    ] of submittedMap.entries()) {
-      if (
-        answer.selectedOptionId === null
-      ) {
-        continue;
-      }
+    const checkpointResult = await db.execute({
+      sql: `
+        SELECT
+          question_id,
+          visited,
+          marked_for_review
+        FROM attempt_answers
+        WHERE attempt_id = ?
+      `,
+      args: [attemptId],
+    });
 
-      const optionResult = await db.execute({
-        sql: `
-          SELECT id
-          FROM question_options
-          WHERE id = ?
-            AND question_id = ?
-          LIMIT 1
-        `,
-        args: [
-          answer.selectedOptionId,
-          questionId,
-        ],
+    const checkpointMap = new Map();
+
+    for (const row of checkpointResult.rows) {
+      checkpointMap.set(Number(row.question_id), {
+        visited: Number(row.visited || 0),
+        markedForReview: Number(
+          row.marked_for_review || 0
+        ),
       });
-
-      if (!optionResult.rows.length) {
-        return NextResponse.json(
-          {
-            error:
-              "Invalid answer data received.",
-          },
-          { status: 400 }
-        );
-      }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Score
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Score
+    // ------------------------------------------------------------
 
     let score = 0;
     let correctCount = 0;
@@ -254,11 +262,14 @@ export async function POST(request, { params }) {
     let unansweredCount = 0;
     let totalTimeSeconds = 0;
 
-    /*
-    |--------------------------------------------------------------------------
-    | Save all questions
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Prepare all answer writes
+    //
+    // No individual await inside the loop.
+    // Everything goes into one batch.
+    // ------------------------------------------------------------
+
+    const answerStatements = [];
 
     for (const [
       questionId,
@@ -289,60 +300,41 @@ export async function POST(request, { params }) {
       ) {
         isCorrect = 1;
         correctCount += 1;
+
         marksObtained =
           questionMeta.marks;
+
         score += questionMeta.marks;
       } else {
         isCorrect = 0;
         wrongCount += 1;
+
         marksObtained =
           -questionMeta.negativeMarks;
-        score -=
-          questionMeta.negativeMarks;
+
+        score -= questionMeta.negativeMarks;
       }
 
-      /*
-      |--------------------------------------------------------------------------
-      | Preserve checkpoint flags
-      |--------------------------------------------------------------------------
-      */
+      // Preserve checkpoint flags.
+      const checkpoint =
+        checkpointMap.get(questionId);
 
-      const checkpointResult =
-        await db.execute({
-          sql: `
-            SELECT
-              visited,
-              marked_for_review
-            FROM attempt_answers
-            WHERE attempt_id = ?
-              AND question_id = ?
-            LIMIT 1
-          `,
-          args: [
-            attemptId,
-            questionId,
-          ],
-        });
-
-      const visited =
-        checkpointResult.rows.length
-          ? Number(
-              checkpointResult.rows[0]
-                .visited || 0
-            )
-          : selectedOptionId !== null
+      const visited = checkpoint
+        ? checkpoint.visited
+        : selectedOptionId !== null
           ? 1
           : 0;
 
-      const markedForReview =
-        checkpointResult.rows.length
-          ? Number(
-              checkpointResult.rows[0]
-                .marked_for_review || 0
-            )
-          : 0;
+      const markedForReview = checkpoint
+        ? checkpoint.markedForReview
+        : 0;
 
-      await db.execute({
+      const answeredAt =
+        selectedOptionId !== null
+          ? new Date().toISOString()
+          : null;
+
+      answerStatements.push({
         sql: `
           INSERT INTO attempt_answers (
             attempt_id,
@@ -355,17 +347,7 @@ export async function POST(request, { params }) {
             visited,
             marked_for_review
           )
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(attempt_id, question_id)
           DO UPDATE SET
             selected_option_id =
@@ -390,20 +372,24 @@ export async function POST(request, { params }) {
           isCorrect,
           marksObtained,
           timeSpentSeconds,
-          selectedOptionId !== null
-            ? new Date().toISOString()
-            : null,
+          answeredAt,
           visited,
           markedForReview,
         ],
       });
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Submitted
-    |--------------------------------------------------------------------------
-    */
+    // ------------------------------------------------------------
+    // Save all answers in one batch
+    // ------------------------------------------------------------
+
+    if (answerStatements.length > 0) {
+      await db.batch(answerStatements, "write");
+    }
+
+    // ------------------------------------------------------------
+    // Mark attempt as submitted
+    // ------------------------------------------------------------
 
     const submittedAt =
       new Date().toISOString();
@@ -439,12 +425,17 @@ export async function POST(request, { params }) {
       ],
     });
 
+    // ------------------------------------------------------------
+    // Response
+    // ------------------------------------------------------------
+
     return NextResponse.json({
       success: true,
 
       result: {
         attemptId: Number(attemptId),
         testId: Number(testId),
+
         attemptNumber: Number(
           attempt.attempt_number
         ),
